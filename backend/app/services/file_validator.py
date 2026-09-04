@@ -62,10 +62,12 @@ def validate_file_metadata(filename: str, content_type: str | None) -> str:
             f"Unsupported file extension '{ext}'. Allowed extensions: {allowed}"
         )
 
-    if content_type and content_type.lower() not in ALLOWED_CONTENT_TYPES:
-        raise InvalidFileFormatError(
-            f"Unsupported content type '{content_type}'. Must be a valid CSV file."
-        )
+    if content_type:
+        base_mime = content_type.split(";")[0].strip().lower()
+        if base_mime not in ALLOWED_CONTENT_TYPES:
+            raise InvalidFileFormatError(
+                f"Unsupported content type '{content_type}'. Must be a valid CSV file."
+            )
 
     return clean_name
 

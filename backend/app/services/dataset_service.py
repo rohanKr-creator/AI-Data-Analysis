@@ -8,6 +8,7 @@ from app.services.file_validator import (
     validate_file_metadata,
     stream_validate_and_save,
     InvalidFileFormatError,
+    EmptyFileError,
 )
 
 
@@ -52,7 +53,7 @@ class DatasetService:
         # Step 4: Verify CSV readability (detect corrupt or binary files)
         try:
             # Read first 5 rows to confirm CSV structure and encoding
-            pd.read_csv(saved_path, nrows=5)
+            df_preview = pd.read_csv(saved_path, nrows=5)
         except Exception as err:
             if saved_path.exists():
                 try:
@@ -62,6 +63,14 @@ class DatasetService:
             raise InvalidFileFormatError(
                 f"File could not be parsed as a valid CSV dataset: {str(err)}"
             )
+
+        if df_preview.empty:
+            if saved_path.exists():
+                try:
+                    saved_path.unlink()
+                except OSError:
+                    pass
+            raise EmptyFileError("CSV file contains no data rows.")
 
         return DatasetUploadResponse(
             dataset_id=dataset_id,

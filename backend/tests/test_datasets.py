@@ -38,6 +38,15 @@ def test_upload_empty_csv(client: TestClient):
     assert "empty" in response.json()["detail"].lower()
 
 
+def test_upload_header_only_csv(client: TestClient):
+    """Test that uploading a CSV with headers but no data rows is rejected with 400."""
+    files = {"file": ("headers_only.csv", io.BytesIO(b"id,name,category\n"), "text/csv")}
+
+    response = client.post("/api/v1/datasets/upload", files=files)
+    assert response.status_code == 400
+    assert "no data rows" in response.json()["detail"].lower()
+
+
 def test_upload_corrupted_csv(client: TestClient):
     """Test that binary/corrupt file disguised as CSV is rejected with 400."""
     binary_content = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00"
