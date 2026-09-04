@@ -7,9 +7,16 @@ from app.schemas.dataset import DatasetUploadResponse
 from app.services.file_validator import (
     validate_file_metadata,
     stream_validate_and_save,
+    sanitize_filename,
     InvalidFileFormatError,
     EmptyFileError,
+    DatasetValidationError,
 )
+
+
+class DatasetNotFoundError(DatasetValidationError):
+    """Raised when a dataset cannot be located on disk by its dataset_id."""
+    pass
 
 
 class DatasetService:
@@ -79,6 +86,32 @@ class DatasetService:
             content_type=content_type or "text/csv",
             message="CSV dataset uploaded and validated successfully.",
         )
+
+    def get_dataset_file(self, dataset_id: str) -> tuple[Path, str]:
+        """
+        Locate dataset file on disk by dataset_id.
+        
+        Args:
+            dataset_id: The identifier assigned during upload.
+            
+        Returns:
+            Tuple of (file_path, original_filename).
+            
+        Raises:
+            DatasetNotFoundError: If no matching file exists on disk.
+        """
+        clean_id = sanitize_filename(dataset_id)
+        if not clean_id:
+            raise DatasetNotFoundError(f"Dataset with ID '{dataset_id}' not found.")
+
+        matching_files = list(self.upload_dir.glob(f"{clean_id}_*.csv"))
+        if not matching_files or not matching_files[0].is_file():
+            raise DatasetNotFoundError(f"Dataset with ID '{dataset_id}' not found.")
+
+        saved_file = matching_files[0]
+        # Extract original filename by stripping the leading "{dataset_id}_"
+        original_filename = saved_file.name.replace(f"{clean_id}_", "", 1)
+        return saved_file, original_filename
 
 
 dataset_service = DatasetService()
