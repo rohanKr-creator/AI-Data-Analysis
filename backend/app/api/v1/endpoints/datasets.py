@@ -3,10 +3,15 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.models.dataset import Dataset
+from app.schemas.analytics import AnalyticsRequest, AnalyticsResponse
 from app.schemas.dataset import (
     DatasetUploadResponse,
     DatasetProfileResponse,
     DatasetErrorResponse,
+)
+from app.services.analytics_service import (
+    analytics_service,
+    AnalyticsValidationError,
 )
 from app.services.dataset_service import dataset_service, DatasetNotFoundError
 from app.services.profiling_service import profiling_service
@@ -150,4 +155,74 @@ def get_dataset_profile(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"An unexpected error occurred during profiling: {str(err)}",
+        )
+
+
+@router.post(
+    "/datasets/{dataset_id}/analyze",
+    response_model=AnalyticsResponse,
+    status_code=status.HTTP_200_OK,
+    responses={
+        400: {"model": DatasetErrorResponse, "description": "Validation failure (column not found, invalid operation, incompatible data type)"},
+        404: {"model": DatasetErrorResponse, "description": "Dataset not found in database or on disk"},
+        500: {"model": DatasetErrorResponse, "description": "Internal server or calculation error"},
+    },
+    summary="Analyze Dataset Column",
+    description="Performs deterministic statistical or aggregate operations on a dataset column, with optional group_by.",
+)
+def analyze_dataset(
+    dataset_id: str,
+    request: AnalyticsRequest,
+    db: Session = Depends(get_db),
+) -> AnalyticsResponse:
+    """Validate parameters, look up dataset, and compute deterministic analytics using Pandas."""
+    try:
+        dataset_uuid = uuid.UUID(dataset_id)
+    except (ValueError, AttributeError):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Dataset with ID '{dataset_id}' not found.",
+        )
+
+    # 1. Query database first to ensure dataset exists
+    dataset = db.query(Dataset).filter(Dataset.id == dataset_uuid).first()
+    if not dataset:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Dataset with ID '{dataset_id}' not found.",
+        )
+
+    # 2. Locate CSV file on disk
+    file_path = dataset_service.upload_dir / dataset.filename
+    if not file_path.is_file():
+        fallback_path = dataset_service.upload_dir / f"{dataset_id}_{dataset.filename}"
+        if fallback_path.is_file():
+            file_path = fallback_path
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Dataset file for ID '{dataset_id}' not found on disk.",
+            )
+
+    # 3. Execute deterministic analytical operation via analytics_service
+    try:
+        return analytics_service.run_analysis(
+            dataset_id=str(dataset.id),
+            file_path=file_path,
+            request=request,
+        )
+    except AnalyticsValidationError as err:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(err),
+        )
+    except DatasetNotFoundError as err:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(err),
+        )
+    except Exception as err:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An unexpected error occurred during analysis: {str(err)}",
         )
