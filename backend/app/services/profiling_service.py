@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 import numpy as np
 import pandas as pd
@@ -47,12 +48,19 @@ class ProfilingService:
             return None
         return round(float(val), 4)
 
-    def generate_profile(self, dataset_id: str) -> DatasetProfileResponse:
+    def generate_profile(
+        self,
+        dataset_id: str,
+        file_path: Optional[Path] = None,
+        original_filename: Optional[str] = None,
+    ) -> DatasetProfileResponse:
         """
         Generate a comprehensive profile of the specified dataset.
         
         Args:
             dataset_id: Unique dataset identifier.
+            file_path: Optional direct path to CSV file. If None, resolves via filesystem.
+            original_filename: Optional original filename. If None, resolves via filesystem.
             
         Returns:
             DatasetProfileResponse containing structural and statistical properties.
@@ -60,7 +68,10 @@ class ProfilingService:
         Raises:
             DatasetNotFoundError: If dataset does not exist on disk.
         """
-        file_path, original_filename = dataset_service.get_dataset_file(dataset_id)
+        if file_path is None or original_filename is None:
+            resolved_path, resolved_name = dataset_service.get_dataset_file(dataset_id)
+            file_path = file_path or resolved_path
+            original_filename = original_filename or resolved_name
 
         df = pd.read_csv(file_path)
 

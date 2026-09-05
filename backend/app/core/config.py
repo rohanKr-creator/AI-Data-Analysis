@@ -31,6 +31,12 @@ class Settings(BaseSettings):
     MAX_UPLOAD_SIZE_BYTES: int = 25 * 1024 * 1024  # 25 MB
     UPLOAD_DIR: str = "data/uploads"
 
+    # PostgreSQL Database settings
+    DATABASE_URL: str = (
+        "postgresql+psycopg2://postgres:postgres@localhost:5432/ai_data_analyst"
+    )
+    ASYNC_DATABASE_URL: Union[str, None] = None
+
     @property
     def upload_path(self) -> Path:
         """Resolve the upload directory relative to project root."""

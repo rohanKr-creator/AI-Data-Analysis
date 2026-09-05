@@ -1,6 +1,9 @@
 import io
+import uuid
 from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session
 from app.core.config import settings
+from app.models.dataset import Dataset
 
 
 def test_upload_valid_csv(client: TestClient):
@@ -16,7 +19,30 @@ def test_upload_valid_csv(client: TestClient):
     assert data["filename"] == "test_sales.csv"
     assert data["size_bytes"] == len(csv_content)
     assert data["content_type"] == "text/csv"
+    assert data["row_count"] == 2
+    assert data["column_count"] == 4
     assert "created_at" in data
+
+
+def test_upload_creates_database_row(client: TestClient, db_session: Session):
+    """Test that CSV upload creates a corresponding row in the datasets table."""
+    csv_content = b"name,score,grade\nAlice,95,A\nBob,82,B\nCharlie,77,C\n"
+    files = {"file": ("students.csv", io.BytesIO(csv_content), "text/csv")}
+
+    response = client.post("/api/v1/datasets/upload", files=files)
+    assert response.status_code == 201
+    dataset_id = response.json()["dataset_id"]
+
+    # Verify directly against database
+    record = db_session.query(Dataset).filter(Dataset.id == uuid.UUID(dataset_id)).first()
+    assert record is not None
+    assert record.original_filename == "students.csv"
+    assert record.filename == f"{dataset_id}_students.csv"
+    assert record.size_bytes == len(csv_content)
+    assert record.content_type == "text/csv"
+    assert record.row_count == 3
+    assert record.column_count == 3
+    assert record.created_at is not None
 
 
 def test_upload_unsupported_file_extension(client: TestClient):
@@ -59,7 +85,6 @@ def test_upload_corrupted_csv(client: TestClient):
 
 def test_upload_exceeds_size_limit(client: TestClient, monkeypatch):
     """Test that files exceeding configured size limit are rejected with 413."""
-    # Temporarily set limit to 100 bytes for test
     monkeypatch.setattr(settings, "MAX_UPLOAD_SIZE_BYTES", 100)
 
     oversized_content = b"a,b,c\n" + (b"1,2,3\n" * 50)  # ~300 bytes
@@ -142,14 +167,41 @@ def test_profile_valid_dataset(client: TestClient):
     assert len(profile["preview"]) == 4
     assert profile["preview"][0]["name"] == "Alice"
     assert profile["preview"][0]["salary"] == 50000.0
-    # Charlie has a null age, Diana has a null salary
     assert profile["preview"][2]["age"] is None
     assert profile["preview"][3]["salary"] is None
 
 
-def test_profile_dataset_not_found(client: TestClient):
-    """Test that requesting a profile for a non-existent dataset returns 404."""
-    response = client.get("/api/v1/datasets/00000000-0000-0000-0000-000000000000/profile")
+def test_profile_dataset_database_lookup(client: TestClient, db_session: Session):
+    """Test that profiling retrieves metadata via database lookup."""
+    csv_content = b"x,y\n10,20\n30,40\n"
+    files = {"file": ("coords.csv", io.BytesIO(csv_content), "text/csv")}
+
+    upload_res = client.post("/api/v1/datasets/upload", files=files)
+    assert upload_res.status_code == 201
+    dataset_id = upload_res.json()["dataset_id"]
+
+    # Verify row exists in DB
+    db_record = db_session.query(Dataset).filter(Dataset.id == uuid.UUID(dataset_id)).first()
+    assert db_record is not None
+
+    # Fetch profile via GET endpoint
+    profile_res = client.get(f"/api/v1/datasets/{dataset_id}/profile")
+    assert profile_res.status_code == 200
+    assert profile_res.json()["dataset_id"] == dataset_id
+    assert profile_res.json()["row_count"] == db_record.row_count
+    assert profile_res.json()["column_count"] == db_record.column_count
+
+
+def test_profile_dataset_not_found_in_database(client: TestClient):
+    """Test that requesting a profile for a non-existent UUID in database returns 404."""
+    non_existent_uuid = str(uuid.uuid4())
+    response = client.get(f"/api/v1/datasets/{non_existent_uuid}/profile")
     assert response.status_code == 404
     assert "not found" in response.json()["detail"].lower()
 
+
+def test_profile_dataset_invalid_uuid(client: TestClient):
+    """Test that requesting a profile with an invalid UUID format returns 404."""
+    response = client.get("/api/v1/datasets/invalid-uuid-string/profile")
+    assert response.status_code == 404
+    assert "not found" in response.json()["detail"].lower()

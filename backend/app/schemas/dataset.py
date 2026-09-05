@@ -10,6 +10,8 @@ class DatasetUploadResponse(BaseModel):
     filename: str = Field(description="Sanitized original filename")
     size_bytes: int = Field(description="Total file size in bytes")
     content_type: str = Field(description="MIME type of the uploaded file")
+    row_count: Optional[int] = Field(default=None, description="Total number of data rows")
+    column_count: Optional[int] = Field(default=None, description="Total number of columns")
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
         description="UTC timestamp of the upload",

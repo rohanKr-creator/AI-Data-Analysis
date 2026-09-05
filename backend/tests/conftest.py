@@ -1,15 +1,68 @@
 import sys
 from pathlib import Path
+from typing import Generator
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import StaticPool
 
 # Ensure backend root is in sys.path
 backend_root = Path(__file__).resolve().parent.parent
 if str(backend_root) not in sys.path:
     sys.path.insert(0, str(backend_root))
 
+from app.core.database import Base, get_db
 from app.main import app
 from app.services.dataset_service import dataset_service
+
+# Dedicated in-memory SQLite database for testing:
+# - Runs purely in RAM
+# - Completely isolated from the real PostgreSQL database
+# - Zero risk of polluting or mutating production/development data
+test_engine = create_engine(
+    "sqlite:///:memory:",
+    connect_args={"check_same_thread": False},
+    poolclass=StaticPool,
+)
+TestingSessionLocal = sessionmaker(
+    autocommit=False,
+    autoflush=False,
+    bind=test_engine,
+)
+
+
+@pytest.fixture(autouse=True)
+def setup_test_db() -> Generator[None, None, None]:
+    """Create fresh database tables for each test and drop them after completion."""
+    Base.metadata.create_all(bind=test_engine)
+    yield
+    Base.metadata.drop_all(bind=test_engine)
+
+
+@pytest.fixture
+def db_session() -> Generator[Session, None, None]:
+    """Provide an isolated database session for direct assertions in test functions."""
+    session = TestingSessionLocal()
+    try:
+        yield session
+    finally:
+        session.close()
+
+
+@pytest.fixture(autouse=True)
+def override_db_dependency() -> Generator[None, None, None]:
+    """Override FastAPI's get_db dependency to point to the in-memory test database."""
+    def _get_test_db() -> Generator[Session, None, None]:
+        session = TestingSessionLocal()
+        try:
+            yield session
+        finally:
+            session.close()
+
+    app.dependency_overrides[get_db] = _get_test_db
+    yield
+    app.dependency_overrides.pop(get_db, None)
 
 
 @pytest.fixture(scope="session")

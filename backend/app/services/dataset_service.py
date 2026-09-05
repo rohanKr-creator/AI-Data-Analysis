@@ -57,10 +57,11 @@ class DatasetService:
             max_size_bytes=settings.MAX_UPLOAD_SIZE_BYTES,
         )
 
-        # Step 4: Verify CSV readability (detect corrupt or binary files)
+        # Step 4: Verify CSV readability and compute row and column counts
         try:
-            # Read first 5 rows to confirm CSV structure and encoding
-            df_preview = pd.read_csv(saved_path, nrows=5)
+            df = pd.read_csv(saved_path)
+            row_count = int(df.shape[0])
+            column_count = int(df.shape[1])
         except Exception as err:
             if saved_path.exists():
                 try:
@@ -71,7 +72,7 @@ class DatasetService:
                 f"File could not be parsed as a valid CSV dataset: {str(err)}"
             )
 
-        if df_preview.empty:
+        if row_count == 0:
             if saved_path.exists():
                 try:
                     saved_path.unlink()
@@ -84,6 +85,8 @@ class DatasetService:
             filename=clean_filename,
             size_bytes=size_bytes,
             content_type=content_type or "text/csv",
+            row_count=row_count,
+            column_count=column_count,
             message="CSV dataset uploaded and validated successfully.",
         )
 
