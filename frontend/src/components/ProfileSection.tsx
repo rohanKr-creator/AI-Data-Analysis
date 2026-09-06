@@ -1,4 +1,5 @@
 import React from 'react';
+import { BarChart3, Table, Hash, Type, Calendar, Binary, Sigma, Eye } from 'lucide-react';
 import type { DatasetProfileResponse } from '../types/api';
 
 interface ProfileSectionProps {
@@ -6,6 +7,20 @@ interface ProfileSectionProps {
   loading: boolean;
   error: string | null;
 }
+
+const getTypeIcon = (dataType: string) => {
+  const t = dataType.toLowerCase();
+  if (t.includes('int') || t.includes('float') || t.includes('num')) {
+    return <Hash size={12} className="type-icon" />;
+  }
+  if (t.includes('bool')) {
+    return <Binary size={12} className="type-icon" />;
+  }
+  if (t.includes('date') || t.includes('time')) {
+    return <Calendar size={12} className="type-icon" />;
+  }
+  return <Type size={12} className="type-icon" />;
+};
 
 export const ProfileSection: React.FC<ProfileSectionProps> = ({
   profile,
@@ -15,7 +30,10 @@ export const ProfileSection: React.FC<ProfileSectionProps> = ({
   if (loading) {
     return (
       <section className="card">
-        <h2>2. Dataset Profile</h2>
+        <h2 className="section-title">
+          <BarChart3 size={19} className="section-icon" />
+          2. Dataset Profile
+        </h2>
         <div className="status-message">Loading profile for dataset...</div>
       </section>
     );
@@ -24,7 +42,10 @@ export const ProfileSection: React.FC<ProfileSectionProps> = ({
   if (error) {
     return (
       <section className="card">
-        <h2>2. Dataset Profile</h2>
+        <h2 className="section-title">
+          <BarChart3 size={19} className="section-icon" />
+          2. Dataset Profile
+        </h2>
         <div className="alert alert-error" role="alert">
           <strong>Profile Error:</strong> {error}
         </div>
@@ -35,7 +56,10 @@ export const ProfileSection: React.FC<ProfileSectionProps> = ({
   if (!profile) {
     return (
       <section className="card">
-        <h2>2. Dataset Profile</h2>
+        <h2 className="section-title">
+          <BarChart3 size={19} className="section-icon" />
+          2. Dataset Profile
+        </h2>
         <p className="placeholder-text">
           No dataset loaded. Upload a dataset above to generate and view its profile.
         </p>
@@ -51,7 +75,10 @@ export const ProfileSection: React.FC<ProfileSectionProps> = ({
 
   return (
     <section className="card">
-      <h2>2. Dataset Profile: {profile.filename}</h2>
+      <h2 className="section-title">
+        <BarChart3 size={19} className="section-icon" />
+        2. Dataset Profile: {profile.filename}
+      </h2>
 
       {/* Overview */}
       <div className="profile-overview">
@@ -61,7 +88,10 @@ export const ProfileSection: React.FC<ProfileSectionProps> = ({
 
       {/* Column Schema & Null counts */}
       <div className="table-wrapper">
-        <h3>Column Schema & Missing Values</h3>
+        <h3 className="subsection-title">
+          <Table size={15} className="subsection-icon" />
+          Column Schema & Missing Values
+        </h3>
         <table className="data-table">
           <thead>
             <tr>
@@ -75,7 +105,12 @@ export const ProfileSection: React.FC<ProfileSectionProps> = ({
             {profile.columns.map((col) => (
               <tr key={col.name}>
                 <td><strong>{col.name}</strong></td>
-                <td><code>{col.data_type}</code></td>
+                <td>
+                  <span className="type-badge">
+                    {getTypeIcon(col.data_type)}
+                    <span>{col.data_type}</span>
+                  </span>
+                </td>
                 <td>{col.null_count}</td>
                 <td>{col.null_percentage.toFixed(2)}%</td>
               </tr>
@@ -87,7 +122,10 @@ export const ProfileSection: React.FC<ProfileSectionProps> = ({
       {/* Numeric Stats */}
       {numericColumns.length > 0 && (
         <div className="table-wrapper">
-          <h3>Numeric Summary Statistics</h3>
+          <h3 className="subsection-title">
+            <Sigma size={15} className="subsection-icon" />
+            Numeric Summary Statistics
+          </h3>
           <table className="data-table">
             <thead>
               <tr>
@@ -118,7 +156,10 @@ export const ProfileSection: React.FC<ProfileSectionProps> = ({
 
       {/* 5-Row Preview */}
       <div className="table-wrapper">
-        <h3>Data Preview (First 5 Rows)</h3>
+        <h3 className="subsection-title">
+          <Eye size={15} className="subsection-icon" />
+          Data Preview (First 5 Rows)
+        </h3>
         {profile.preview && profile.preview.length > 0 ? (
           <div className="table-scroll">
             <table className="data-table">

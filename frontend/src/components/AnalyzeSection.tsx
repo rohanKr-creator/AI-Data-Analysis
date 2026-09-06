@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Calculator, Play, Sparkles } from 'lucide-react';
 import { analyzeDataset } from '../services/api';
 import type {
   AnalyticsOperation,
@@ -36,7 +37,10 @@ export const AnalyzeSection: React.FC<AnalyzeSectionProps> = ({
   if (!datasetId || !profile) {
     return (
       <section className="card">
-        <h2>3. Analyze Dataset</h2>
+        <h2 className="section-title">
+          <Calculator size={19} className="section-icon" />
+          3. Analyze Dataset
+        </h2>
         <p className="placeholder-text">
           Upload a dataset above to run statistical and aggregate operations.
         </p>
@@ -164,7 +168,10 @@ export const AnalyzeSection: React.FC<AnalyzeSectionProps> = ({
 
   return (
     <section className="card">
-      <h2>3. Analyze Dataset</h2>
+      <h2 className="section-title">
+        <Calculator size={19} className="section-icon" />
+        3. Analyze Dataset
+      </h2>
       <form onSubmit={handleRunAnalysis} className="analyze-form">
         <div className="form-group">
           <label htmlFor="analyze-column-select">Column:</label>
@@ -216,7 +223,9 @@ export const AnalyzeSection: React.FC<AnalyzeSectionProps> = ({
           id="run-analysis-button"
           type="submit"
           disabled={loading || !currentColumn}
+          className="btn-with-icon"
         >
+          <Play size={14} />
           {loading ? 'Calculating...' : 'Run Analysis'}
         </button>
       </form>
@@ -229,7 +238,10 @@ export const AnalyzeSection: React.FC<AnalyzeSectionProps> = ({
 
       {response && (
         <div className="result-container">
-          <h3>Analysis Result</h3>
+          <h3 className="subsection-title">
+            <Sparkles size={16} className="subsection-icon" />
+            Analysis Result
+          </h3>
           <div className="result-meta">
             <span><strong>Operation:</strong> {response.operation}</span>
             <span><strong>Target Column:</strong> {response.column}</span>

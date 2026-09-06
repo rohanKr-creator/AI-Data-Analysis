@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { UploadCloud, FileSpreadsheet } from 'lucide-react';
 import { uploadDataset } from '../services/api';
 import type { DatasetUploadResponse } from '../types/api';
 
@@ -44,7 +45,10 @@ export const UploadSection: React.FC<UploadSectionProps> = ({
 
   return (
     <section className="card">
-      <h2>1. Upload Dataset</h2>
+      <h2 className="section-title">
+        <UploadCloud size={19} className="section-icon" />
+        1. Upload Dataset
+      </h2>
       <form onSubmit={handleUpload} className="upload-form">
         <label htmlFor="csv-file-input">Select CSV File:</label>
         <input
@@ -58,7 +62,9 @@ export const UploadSection: React.FC<UploadSectionProps> = ({
           id="upload-button"
           type="submit"
           disabled={loading || !selectedFile}
+          className="btn-with-icon"
         >
+          <UploadCloud size={15} />
           {loading ? 'Uploading...' : 'Upload CSV'}
         </button>
       </form>
@@ -71,7 +77,10 @@ export const UploadSection: React.FC<UploadSectionProps> = ({
 
       {uploadedDataset && (
         <div className="metadata-box">
-          <h3>Uploaded Dataset Details</h3>
+          <h3 className="subsection-title">
+            <FileSpreadsheet size={16} className="subsection-icon" />
+            Uploaded Dataset Details
+          </h3>
           <table className="info-table">
             <tbody>
               <tr>
