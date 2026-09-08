@@ -4,11 +4,13 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.models.dataset import Dataset
 from app.schemas.analytics import AnalyticsRequest, AnalyticsResponse
+from app.schemas.ai_analyst import AskQuestionRequest, AskQuestionResponse
 from app.schemas.dataset import (
     DatasetUploadResponse,
     DatasetProfileResponse,
     DatasetErrorResponse,
 )
+from app.services.ai_analyst_service import ai_analyst_service
 from app.services.analytics_service import (
     analytics_service,
     AnalyticsValidationError,
@@ -225,4 +227,75 @@ def analyze_dataset(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"An unexpected error occurred during analysis: {str(err)}",
+        )
+
+
+@router.post(
+    "/datasets/{dataset_id}/ask",
+    response_model=AskQuestionResponse,
+    status_code=status.HTTP_200_OK,
+    responses={
+        400: {"model": DatasetErrorResponse, "description": "Invalid question format or parameter"},
+        404: {"model": DatasetErrorResponse, "description": "Dataset not found in database or on disk"},
+        503: {"model": DatasetErrorResponse, "description": "AI service unavailable or timed out"},
+        500: {"model": DatasetErrorResponse, "description": "Internal server or configuration error"},
+    },
+    summary="Ask Question (AI Analyst)",
+    description="Interprets a natural-language question using Gemini, executes a deterministic calculation using Pandas via AnalyticsService, and returns a verified explanation sentence.",
+)
+def ask_dataset_question(
+    dataset_id: str,
+    request: AskQuestionRequest,
+    db: Session = Depends(get_db),
+) -> AskQuestionResponse:
+    """
+    Look up dataset, validate existence, interpret question via Gemini, run deterministic Pandas math,
+    and return verified natural-language explanation.
+    """
+    try:
+        dataset_uuid = uuid.UUID(dataset_id)
+    except (ValueError, AttributeError):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Dataset with ID '{dataset_id}' not found.",
+        )
+
+    # 1. Query database first (404 if not found)
+    dataset = db.query(Dataset).filter(Dataset.id == dataset_uuid).first()
+    if not dataset:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Dataset with ID '{dataset_id}' not found.",
+        )
+
+    # 2. Locate CSV file on disk
+    file_path = dataset_service.upload_dir / dataset.filename
+    if not file_path.is_file():
+        fallback_path = dataset_service.upload_dir / f"{dataset_id}_{dataset.filename}"
+        if fallback_path.is_file():
+            file_path = fallback_path
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Dataset file for ID '{dataset_id}' not found on disk.",
+            )
+
+    # 3. Process natural language question via AiAnalystService
+    try:
+        return ai_analyst_service.ask(
+            dataset_id=str(dataset.id),
+            file_path=file_path,
+            question=request.question,
+        )
+    except HTTPException:
+        raise
+    except DatasetNotFoundError as err:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(err),
+        )
+    except Exception as err:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An unexpected error occurred during AI analysis: {str(err)}",
         )

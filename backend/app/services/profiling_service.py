@@ -48,6 +48,13 @@ class ProfilingService:
             return None
         return round(float(val), 4)
 
+    def get_column_types(self, df: pd.DataFrame) -> Dict[str, str]:
+        """
+        Extract column names and their inferred data types from a DataFrame.
+        Reuses _infer_column_type without code duplication.
+        """
+        return {str(col): self._infer_column_type(df[col]) for col in df.columns}
+
     def generate_profile(
         self,
         dataset_id: str,

@@ -38,6 +38,10 @@ class Settings(BaseSettings):
     )
     ASYNC_DATABASE_URL: Union[str, None] = None
 
+    # Google Gemini AI Settings
+    GEMINI_API_KEY: str = ""
+    GEMINI_MODEL: str = "gemini-3.6-flash"
+
     @property
     def upload_path(self) -> Path:
         """Resolve the upload directory relative to project root."""
