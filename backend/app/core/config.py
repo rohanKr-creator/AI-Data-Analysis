@@ -42,6 +42,11 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: str = ""
     GEMINI_MODEL: str = "gemini-3.6-flash"
 
+    # Supabase Cloud Storage Settings
+    SUPABASE_URL: str = ""
+    SUPABASE_SERVICE_ROLE_KEY: str = ""
+    SUPABASE_BUCKET_NAME: str = "datasets"
+
     @property
     def upload_path(self) -> Path:
         """Resolve the upload directory relative to project root."""
@@ -71,6 +76,17 @@ class Settings(BaseSettings):
         elif isinstance(v, list):
             return v
         return []
+
+
+    @field_validator("SUPABASE_URL", mode="before")
+    @classmethod
+    def clean_supabase_url(cls, v: Union[str, None]) -> str:
+        if isinstance(v, str):
+            cleaned = v.strip()
+            if "/rest/v1" in cleaned:
+                cleaned = cleaned.split("/rest/v1")[0]
+            return cleaned.rstrip("/")
+        return v or ""
 
 
 settings = Settings()

@@ -1,9 +1,11 @@
+import io
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 import numpy as np
 import pandas as pd
 from app.schemas.analytics import AnalyticsRequest, AnalyticsResponse
 from app.services.dataset_service import DatasetNotFoundError, dataset_service
+from app.services.storage_service import storage_service, StorageFileNotFoundError
 
 
 class AnalyticsValidationError(Exception):
@@ -126,24 +128,46 @@ class AnalyticsService:
     def run_analysis(
         self,
         dataset_id: str,
-        file_path: Path,
-        request: AnalyticsRequest,
+        file_path: Optional[Union[Path, str]] = None,
+        request: Optional[AnalyticsRequest] = None,
+        storage_path: Optional[str] = None,
     ) -> AnalyticsResponse:
         """
-        Load dataset from disk, validate analysis parameters, and compute results using Pandas.
+        Load dataset from Supabase Storage (or disk), validate analysis parameters,
+        and compute results using Pandas.
 
         Args:
             dataset_id: Identifier of the dataset.
-            file_path: Path to the dataset CSV file.
+            file_path: Optional path to local dataset CSV file.
             request: AnalyticsRequest with column, operation, and optional group_by.
+            storage_path: Optional storage path in Supabase Storage bucket.
 
         Returns:
             AnalyticsResponse with computed values and metadata.
         """
-        if not file_path.is_file():
-            raise DatasetNotFoundError(f"Dataset file for ID '{dataset_id}' not found on disk.")
+        if request is None and isinstance(file_path, AnalyticsRequest):
+            request = file_path
+            file_path = None
 
-        df = pd.read_csv(file_path)
+        if request is None:
+            raise AnalyticsValidationError("Analytics request payload is required.")
+
+        if file_path is not None and isinstance(file_path, Path) and file_path.is_file():
+            df = pd.read_csv(file_path)
+        else:
+            if isinstance(file_path, str) and not storage_path:
+                storage_path = file_path
+
+            if not storage_path:
+                resolved_path, _ = dataset_service.get_dataset_file(dataset_id)
+                storage_path = resolved_path
+
+            try:
+                file_bytes = storage_service.download_file(storage_path)
+            except StorageFileNotFoundError as err:
+                raise DatasetNotFoundError(str(err)) from err
+
+            df = pd.read_csv(io.BytesIO(file_bytes))
 
         # Validate inputs against loaded data
         operation, column, group_by = self.validate_request(df, request)

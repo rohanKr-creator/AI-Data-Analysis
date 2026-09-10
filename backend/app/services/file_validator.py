@@ -123,3 +123,36 @@ def stream_validate_and_save(
             except OSError:
                 pass
         raise
+
+
+def read_and_validate_stream(
+    file_stream: BinaryIO,
+    max_size_bytes: int,
+) -> bytes:
+    """
+    Read file stream into memory while strictly enforcing maximum size limits.
+
+    Returns:
+        Validated file content as bytes.
+    Raises:
+        FileSizeExceededError: If stream exceeds max_size_bytes.
+        EmptyFileError: If file contains 0 bytes.
+    """
+    content = bytearray()
+    total_bytes = 0
+
+    while True:
+        chunk = file_stream.read(CHUNK_SIZE)
+        if not chunk:
+            break
+        total_bytes += len(chunk)
+        if total_bytes > max_size_bytes:
+            raise FileSizeExceededError(
+                f"File size exceeds maximum allowed limit of {max_size_bytes} bytes ({max_size_bytes // (1024 * 1024)} MB)."
+            )
+        content.extend(chunk)
+
+    if total_bytes == 0:
+        raise EmptyFileError("Uploaded file is empty (0 bytes).")
+
+    return bytes(content)

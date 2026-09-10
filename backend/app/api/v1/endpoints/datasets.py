@@ -17,6 +17,7 @@ from app.services.analytics_service import (
 )
 from app.services.dataset_service import dataset_service, DatasetNotFoundError
 from app.services.profiling_service import profiling_service
+from app.services.storage_service import storage_service, StorageFileNotFoundError
 from app.services.file_validator import (
     EmptyFileError,
     FileSizeExceededError,
@@ -36,13 +37,13 @@ router = APIRouter()
         500: {"model": DatasetErrorResponse, "description": "Server or database error"},
     },
     summary="Upload CSV Dataset",
-    description="Uploads a CSV file, enforces security/size constraints, validates structure, stores it on disk, and records metadata in PostgreSQL.",
+    description="Uploads a CSV file, enforces security/size constraints, validates structure, stores it in Supabase Storage, and records metadata in PostgreSQL.",
 )
 async def upload_dataset(
     file: UploadFile = File(..., description="CSV dataset file to upload"),
     db: Session = Depends(get_db),
 ) -> DatasetUploadResponse:
-    """Validate, stream, store uploaded CSV dataset, and insert metadata into database."""
+    """Validate, stream, store uploaded CSV dataset in Supabase Storage, and insert metadata into database."""
     if not file.filename:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -50,14 +51,14 @@ async def upload_dataset(
         )
 
     try:
-        # Step 1: Validate file, stream to disk, and compute row/col counts
+        # Step 1: Validate file, stream to memory, upload to Supabase Storage, and compute row/col counts
         result = dataset_service.process_csv_upload(
             file_stream=file.file,
             original_filename=file.filename,
             content_type=file.content_type,
         )
 
-        # Step 2: Insert dataset metadata row into PostgreSQL
+        # Step 2: Insert dataset metadata row into PostgreSQL (storing Supabase Storage key in filename column)
         stored_filename = f"{result.dataset_id}_{result.filename}"
         dataset_record = Dataset(
             id=uuid.UUID(result.dataset_id),
@@ -88,13 +89,11 @@ async def upload_dataset(
 
     except Exception as err:
         db.rollback()
-        # Clean up saved file from disk if record persistence failed
+        # Clean up uploaded file from Supabase Storage if record persistence failed
         if "result" in locals() and hasattr(result, "dataset_id"):
             try:
-                disk_file = dataset_service.upload_dir / f"{result.dataset_id}_{result.filename}"
-                if disk_file.exists():
-                    disk_file.unlink()
-            except OSError:
+                storage_service.delete_file(f"{result.dataset_id}_{result.filename}")
+            except Exception:
                 pass
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -117,7 +116,7 @@ def get_dataset_profile(
     dataset_id: str,
     db: Session = Depends(get_db),
 ) -> DatasetProfileResponse:
-    """Look up dataset in the database, locate file on disk, and return profiling analysis."""
+    """Look up dataset in the database, fetch file from Supabase Storage, and return profiling analysis."""
     try:
         dataset_uuid = uuid.UUID(dataset_id)
     except (ValueError, AttributeError):
@@ -134,24 +133,17 @@ def get_dataset_profile(
             detail=f"Dataset with ID '{dataset_id}' not found.",
         )
 
-    # 2. Locate file on disk using stored filename
-    file_path = dataset_service.upload_dir / dataset.filename
-    if not file_path.is_file():
-        fallback_path = dataset_service.upload_dir / f"{dataset_id}_{dataset.filename}"
-        if fallback_path.is_file():
-            file_path = fallback_path
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Dataset file for ID '{dataset_id}' not found on disk.",
-            )
-
-    # 3. Generate profiling analysis
+    # 2. Generate profiling analysis by downloading from Supabase Storage
     try:
         return profiling_service.generate_profile(
             dataset_id=str(dataset.id),
-            file_path=file_path,
+            storage_path=dataset.filename,
             original_filename=dataset.original_filename,
+        )
+    except (DatasetNotFoundError, StorageFileNotFoundError):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Dataset file for ID '{dataset_id}' not found in storage.",
         )
     except Exception as err:
         raise HTTPException(
@@ -166,7 +158,7 @@ def get_dataset_profile(
     status_code=status.HTTP_200_OK,
     responses={
         400: {"model": DatasetErrorResponse, "description": "Validation failure (column not found, invalid operation, incompatible data type)"},
-        404: {"model": DatasetErrorResponse, "description": "Dataset not found in database or on disk"},
+        404: {"model": DatasetErrorResponse, "description": "Dataset not found in database or storage"},
         500: {"model": DatasetErrorResponse, "description": "Internal server or calculation error"},
     },
     summary="Analyze Dataset Column",
@@ -194,23 +186,11 @@ def analyze_dataset(
             detail=f"Dataset with ID '{dataset_id}' not found.",
         )
 
-    # 2. Locate CSV file on disk
-    file_path = dataset_service.upload_dir / dataset.filename
-    if not file_path.is_file():
-        fallback_path = dataset_service.upload_dir / f"{dataset_id}_{dataset.filename}"
-        if fallback_path.is_file():
-            file_path = fallback_path
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Dataset file for ID '{dataset_id}' not found on disk.",
-            )
-
-    # 3. Execute deterministic analytical operation via analytics_service
+    # 2. Execute deterministic analytical operation via analytics_service
     try:
         return analytics_service.run_analysis(
             dataset_id=str(dataset.id),
-            file_path=file_path,
+            storage_path=dataset.filename,
             request=request,
         )
     except AnalyticsValidationError as err:
@@ -218,10 +198,10 @@ def analyze_dataset(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(err),
         )
-    except DatasetNotFoundError as err:
+    except (DatasetNotFoundError, StorageFileNotFoundError) as err:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=str(err),
+            detail=f"Dataset file for ID '{dataset_id}' not found in storage.",
         )
     except Exception as err:
         raise HTTPException(
@@ -236,7 +216,7 @@ def analyze_dataset(
     status_code=status.HTTP_200_OK,
     responses={
         400: {"model": DatasetErrorResponse, "description": "Invalid question format or parameter"},
-        404: {"model": DatasetErrorResponse, "description": "Dataset not found in database or on disk"},
+        404: {"model": DatasetErrorResponse, "description": "Dataset not found in database or storage"},
         503: {"model": DatasetErrorResponse, "description": "AI service unavailable or timed out"},
         500: {"model": DatasetErrorResponse, "description": "Internal server or configuration error"},
     },
@@ -268,31 +248,19 @@ def ask_dataset_question(
             detail=f"Dataset with ID '{dataset_id}' not found.",
         )
 
-    # 2. Locate CSV file on disk
-    file_path = dataset_service.upload_dir / dataset.filename
-    if not file_path.is_file():
-        fallback_path = dataset_service.upload_dir / f"{dataset_id}_{dataset.filename}"
-        if fallback_path.is_file():
-            file_path = fallback_path
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Dataset file for ID '{dataset_id}' not found on disk.",
-            )
-
-    # 3. Process natural language question via AiAnalystService
+    # 2. Process natural language question via AiAnalystService
     try:
         return ai_analyst_service.ask(
             dataset_id=str(dataset.id),
-            file_path=file_path,
+            storage_path=dataset.filename,
             question=request.question,
         )
     except HTTPException:
         raise
-    except DatasetNotFoundError as err:
+    except (DatasetNotFoundError, StorageFileNotFoundError) as err:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=str(err),
+            detail=f"Dataset file for ID '{dataset_id}' not found in storage.",
         )
     except Exception as err:
         raise HTTPException(

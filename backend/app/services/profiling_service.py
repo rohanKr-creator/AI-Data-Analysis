@@ -1,5 +1,6 @@
+import io
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 import numpy as np
 import pandas as pd
 from app.schemas.dataset import (
@@ -8,6 +9,7 @@ from app.schemas.dataset import (
     NumericColumnStats,
 )
 from app.services.dataset_service import dataset_service, DatasetNotFoundError
+from app.services.storage_service import storage_service, StorageFileNotFoundError
 
 
 class ProfilingService:
@@ -58,29 +60,44 @@ class ProfilingService:
     def generate_profile(
         self,
         dataset_id: str,
-        file_path: Optional[Path] = None,
+        storage_path: Optional[str] = None,
         original_filename: Optional[str] = None,
+        file_path: Optional[Union[Path, str]] = None,
     ) -> DatasetProfileResponse:
         """
         Generate a comprehensive profile of the specified dataset.
         
         Args:
             dataset_id: Unique dataset identifier.
-            file_path: Optional direct path to CSV file. If None, resolves via filesystem.
-            original_filename: Optional original filename. If None, resolves via filesystem.
+            storage_path: Storage path/key within Supabase Storage bucket.
+            original_filename: Original filename of the dataset.
+            file_path: Optional local path for backward compatibility.
             
         Returns:
             DatasetProfileResponse containing structural and statistical properties.
             
         Raises:
-            DatasetNotFoundError: If dataset does not exist on disk.
+            DatasetNotFoundError: If dataset does not exist in database or storage.
         """
-        if file_path is None or original_filename is None:
-            resolved_path, resolved_name = dataset_service.get_dataset_file(dataset_id)
-            file_path = file_path or resolved_path
-            original_filename = original_filename or resolved_name
+        if file_path is not None and isinstance(file_path, Path) and file_path.is_file():
+            df = pd.read_csv(file_path)
+            original_filename = original_filename or file_path.name
+        else:
+            # If file_path was passed as a string storage path
+            if isinstance(file_path, str) and not storage_path:
+                storage_path = file_path
 
-        df = pd.read_csv(file_path)
+            if not storage_path or not original_filename:
+                resolved_path, resolved_name = dataset_service.get_dataset_file(dataset_id)
+                storage_path = storage_path or resolved_path
+                original_filename = original_filename or resolved_name
+
+            try:
+                file_bytes = storage_service.download_file(storage_path)
+            except StorageFileNotFoundError as err:
+                raise DatasetNotFoundError(str(err)) from err
+
+            df = pd.read_csv(io.BytesIO(file_bytes))
 
         row_count = int(len(df))
         column_count = int(len(df.columns))

@@ -1,7 +1,8 @@
+import io
 import json
 import logging
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union
 import httpx
 import pandas as pd
 from fastapi import HTTPException, status
@@ -15,8 +16,9 @@ from app.services.analytics_service import (
     AnalyticsValidationError,
     analytics_service,
 )
-from app.services.dataset_service import DatasetNotFoundError
+from app.services.dataset_service import DatasetNotFoundError, dataset_service
 from app.services.profiling_service import profiling_service
+from app.services.storage_service import storage_service, StorageFileNotFoundError
 
 logger = logging.getLogger(__name__)
 
@@ -209,21 +211,45 @@ Rules:
     def ask(
         self,
         dataset_id: str,
-        file_path: Path,
-        question: str,
+        file_path: Optional[Union[Path, str]] = None,
+        question: Optional[str] = None,
+        storage_path: Optional[str] = None,
     ) -> AskQuestionResponse:
         """
         Complete end-to-end question answering pipeline:
-        1. Load dataset & schema
+        1. Load dataset & schema from Supabase Storage (or disk)
         2. Ask Gemini for intent
         3. Validate intent with analytics_service
         4. Execute deterministic math with Pandas
         5. Generate 1-sentence natural language explanation
         """
-        if not file_path.is_file():
-            raise DatasetNotFoundError(f"Dataset file for ID '{dataset_id}' not found on disk.")
+        # Support flexible argument ordering
+        if question is None and isinstance(file_path, str) and not file_path.endswith(".csv"):
+            question = file_path
+            file_path = None
 
-        df = pd.read_csv(file_path)
+        if question is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Question parameter is required.",
+            )
+
+        if file_path is not None and isinstance(file_path, Path) and file_path.is_file():
+            df = pd.read_csv(file_path)
+        else:
+            if isinstance(file_path, str) and not storage_path:
+                storage_path = file_path
+
+            if not storage_path:
+                resolved_path, _ = dataset_service.get_dataset_file(dataset_id)
+                storage_path = resolved_path
+
+            try:
+                file_bytes = storage_service.download_file(storage_path)
+            except StorageFileNotFoundError as err:
+                raise DatasetNotFoundError(str(err)) from err
+
+            df = pd.read_csv(io.BytesIO(file_bytes))
 
         # 1. Reuse existing profiling_service to extract column names and inferred types
         column_schema = profiling_service.get_column_types(df)
@@ -273,8 +299,9 @@ Rules:
         # 4. Execute operation using the existing analytics_service (Pandas does the math)
         analytics_response = analytics_service.run_analysis(
             dataset_id=dataset_id,
-            file_path=file_path,
             request=analytics_req,
+            storage_path=storage_path,
+            file_path=file_path,
         )
 
         # 5. Send verified computed result to Gemini for 1-sentence natural language explanation
