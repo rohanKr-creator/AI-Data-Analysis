@@ -14,6 +14,7 @@ export interface ColumnSummary {
   data_type: string;
   null_count: number;
   null_percentage: number;
+  unique_count?: number;
 }
 
 export interface NumericColumnStats {
@@ -41,7 +42,8 @@ export type AnalyticsOperation =
   | 'count'
   | 'median'
   | 'std'
-  | 'value_counts';
+  | 'value_counts'
+  | 'histogram';
 
 export interface AnalyticsRequest {
   column: string;

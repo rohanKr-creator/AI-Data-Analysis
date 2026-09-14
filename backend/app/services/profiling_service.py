@@ -108,6 +108,7 @@ class ProfilingService:
             null_count = int(df[col].isna().sum())
             null_pct = round(float((null_count / row_count) * 100), 2) if row_count > 0 else 0.0
             data_type = self._infer_column_type(df[col])
+            unique_count = int(df[col].nunique(dropna=True))
 
             columns.append(
                 ColumnSummary(
@@ -115,6 +116,7 @@ class ProfilingService:
                     data_type=data_type,
                     null_count=null_count,
                     null_percentage=null_pct,
+                    unique_count=unique_count,
                 )
             )
 

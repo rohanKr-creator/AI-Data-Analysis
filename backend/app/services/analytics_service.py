@@ -40,9 +40,10 @@ class AnalyticsService:
         "median",
         "std",
         "value_counts",
+        "histogram",
     }
 
-    NUMERIC_ONLY_OPERATIONS = {"mean", "sum", "median", "std"}
+    NUMERIC_ONLY_OPERATIONS = {"mean", "sum", "median", "std", "histogram"}
 
     def _infer_type(self, series: pd.Series) -> str:
         """Infer high-level human-readable data type for a series."""
@@ -251,6 +252,28 @@ class AnalyticsService:
                 else:
                     std_val = valid_series.std()
                     result = None if pd.isna(std_val) else round(float(std_val), 4)
+
+            elif operation == "histogram":
+                if valid_series.empty:
+                    result = {}
+                else:
+                    n = len(valid_series)
+                    num_bins = min(10, max(4, int(np.ceil(np.log2(n) + 1))))
+                    min_val = float(valid_series.min())
+                    max_val = float(valid_series.max())
+                    if min_val == max_val:
+                        val_str = f"{int(min_val)}" if min_val.is_integer() else f"{round(min_val, 2)}"
+                        result = {val_str: int(len(valid_series))}
+                    else:
+                        counts, bin_edges = np.histogram(valid_series, bins=num_bins)
+                        result = {}
+                        for i in range(len(counts)):
+                            low = round(float(bin_edges[i]), 2)
+                            high = round(float(bin_edges[i + 1]), 2)
+                            low_str = f"{int(low)}" if low.is_integer() else f"{low}"
+                            high_str = f"{int(high)}" if high.is_integer() else f"{high}"
+                            bin_label = f"{low_str} - {high_str}"
+                            result[bin_label] = int(counts[i])
 
             else:
                 raise InvalidOperationError(f"Unsupported operation '{operation}'.")

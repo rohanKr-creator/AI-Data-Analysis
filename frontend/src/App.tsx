@@ -179,7 +179,7 @@ EMP-115,Robert Diaz,Engineering,118000,305000,4.7,2020`;
                   />
                 )}
 
-                {activeTab === 'charts' && <ChartsTab profile={profile} />}
+                {activeTab === 'charts' && <ChartsTab key={profile.dataset_id} profile={profile} />}
 
                 {activeTab === 'quality' && <QualityTab profile={profile} />}
 

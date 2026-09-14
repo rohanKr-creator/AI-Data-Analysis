@@ -26,6 +26,10 @@ class ColumnSummary(BaseModel):
     data_type: str = Field(description="Inferred data type (e.g. integer, float, string, boolean, datetime)")
     null_count: int = Field(description="Number of missing or null values in this column")
     null_percentage: float = Field(description="Percentage of null values in this column (0.0 to 100.0)")
+    unique_count: Optional[int] = Field(
+        default=None,
+        description="Number of unique non-null values observed in this column",
+    )
 
 
 class NumericColumnStats(BaseModel):
