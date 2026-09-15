@@ -205,3 +205,133 @@ def test_profile_dataset_invalid_uuid(client: TestClient):
     response = client.get("/api/v1/datasets/invalid-uuid-string/profile")
     assert response.status_code == 404
     assert "not found" in response.json()["detail"].lower()
+
+
+def test_upload_dataset_saves_user_id(client: TestClient, db_session: Session):
+    """Test that uploading a dataset stores the authenticated user's ID."""
+    from tests.conftest import TEST_USER_ID
+
+    csv_content = b"a,b\n1,2\n"
+    files = {"file": ("auth_test.csv", io.BytesIO(csv_content), "text/csv")}
+
+    res = client.post("/api/v1/datasets/upload", files=files)
+    assert res.status_code == 201
+    dataset_id = res.json()["dataset_id"]
+    assert res.json().get("user_id") == TEST_USER_ID
+
+    record = db_session.query(Dataset).filter(Dataset.id == uuid.UUID(dataset_id)).first()
+    assert record is not None
+    assert record.user_id == TEST_USER_ID
+
+
+def test_unauthenticated_requests_return_401(client: TestClient):
+    """Test that requests without valid credentials return 401 Unauthorized."""
+    from app.core.auth import get_current_user
+    from app.main import app
+
+    # Remove the mock dependency override to test real unauthenticated behavior
+    app.dependency_overrides.pop(get_current_user, None)
+    try:
+        csv_content = b"a,b\n1,2\n"
+        files = {"file": ("unauth.csv", io.BytesIO(csv_content), "text/csv")}
+
+        upload_res = client.post("/api/v1/datasets/upload", files=files)
+        assert upload_res.status_code == 401
+
+        list_res = client.get("/api/v1/datasets")
+        assert list_res.status_code == 401
+
+        random_id = str(uuid.uuid4())
+        profile_res = client.get(f"/api/v1/datasets/{random_id}/profile")
+        assert profile_res.status_code == 401
+    finally:
+        # Re-attach default fixture in tests
+        pass
+
+
+def test_cross_user_access_returns_403_forbidden(client: TestClient):
+    """Test that attempting to access another user's dataset returns 403 Forbidden."""
+    from app.core.auth import AuthenticatedUser, get_current_user
+    from app.main import app
+    from tests.conftest import OTHER_USER_ID, TEST_USER_ID
+
+    # Step 1: User 1 uploads a dataset
+    csv_content = b"metric,value\nalpha,100\nbeta,200\n"
+    files = {"file": ("user1_data.csv", io.BytesIO(csv_content), "text/csv")}
+    upload_res = client.post("/api/v1/datasets/upload", files=files)
+    assert upload_res.status_code == 201
+    dataset_id = upload_res.json()["dataset_id"]
+
+    # Step 2: Switch caller to User 2
+    user_2 = AuthenticatedUser(
+        id=OTHER_USER_ID,
+        email="user2@example.com",
+        role="authenticated",
+    )
+    app.dependency_overrides[get_current_user] = lambda: user_2
+
+    try:
+        # User 2 tries to fetch User 1's profile
+        profile_res = client.get(f"/api/v1/datasets/{dataset_id}/profile")
+        assert profile_res.status_code == 403
+        assert "permission" in profile_res.json()["detail"].lower()
+
+        # User 2 tries to run analysis on User 1's dataset
+        analyze_res = client.post(
+            f"/api/v1/datasets/{dataset_id}/analyze",
+            json={"column": "value", "operation": "mean"},
+        )
+        assert analyze_res.status_code == 403
+        assert "permission" in analyze_res.json()["detail"].lower()
+
+        # User 2 tries to ask question on User 1's dataset
+        ask_res = client.post(
+            f"/api/v1/datasets/{dataset_id}/ask",
+            json={"question": "What is the average value?"},
+        )
+        assert ask_res.status_code == 403
+        assert "permission" in ask_res.json()["detail"].lower()
+    finally:
+        app.dependency_overrides.pop(get_current_user, None)
+
+
+def test_list_user_datasets_returns_only_owned_datasets(client: TestClient):
+    """Test that GET /api/v1/datasets lists only datasets belonging to the current user."""
+    from app.core.auth import AuthenticatedUser, get_current_user
+    from app.main import app
+    from tests.conftest import OTHER_USER_ID, TEST_USER_ID
+
+    # User 1 uploads dataset 1
+    files_1 = {"file": ("user1_first.csv", io.BytesIO(b"x,y\n1,2\n"), "text/csv")}
+    res_1 = client.post("/api/v1/datasets/upload", files=files_1)
+    assert res_1.status_code == 201
+    dataset_id_1 = res_1.json()["dataset_id"]
+
+    # User 1 lists datasets
+    list_res_1 = client.get("/api/v1/datasets")
+    assert list_res_1.status_code == 200
+    ids_1 = [d["id"] for d in list_res_1.json()]
+    assert dataset_id_1 in ids_1
+
+    # Switch to User 2 and upload dataset 2
+    user_2 = AuthenticatedUser(
+        id=OTHER_USER_ID,
+        email="user2@example.com",
+        role="authenticated",
+    )
+    app.dependency_overrides[get_current_user] = lambda: user_2
+    try:
+        files_2 = {"file": ("user2_dataset.csv", io.BytesIO(b"m,n\n10,20\n"), "text/csv")}
+        res_2 = client.post("/api/v1/datasets/upload", files=files_2)
+        assert res_2.status_code == 201
+        dataset_id_2 = res_2.json()["dataset_id"]
+
+        # User 2 lists datasets -> should ONLY see dataset 2, NOT dataset 1
+        list_res_2 = client.get("/api/v1/datasets")
+        assert list_res_2.status_code == 200
+        ids_2 = [d["id"] for d in list_res_2.json()]
+        assert dataset_id_2 in ids_2
+        assert dataset_id_1 not in ids_2
+    finally:
+        app.dependency_overrides.pop(get_current_user, None)
+

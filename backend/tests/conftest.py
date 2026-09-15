@@ -12,10 +12,40 @@ backend_root = Path(__file__).resolve().parent.parent
 if str(backend_root) not in sys.path:
     sys.path.insert(0, str(backend_root))
 
+from app.core.auth import AuthenticatedUser, get_current_user
 from app.core.database import Base, get_db
 from app.main import app
 from app.services.dataset_service import dataset_service
 from app.services.storage_service import storage_service
+
+TEST_USER_ID = "00000000-0000-0000-0000-000000000001"
+TEST_USER_EMAIL = "test_analyst@example.com"
+OTHER_USER_ID = "00000000-0000-0000-0000-000000000002"
+OTHER_USER_EMAIL = "other_analyst@example.com"
+
+
+@pytest.fixture
+def mock_auth_user() -> AuthenticatedUser:
+    """Fixture providing a default verified mock AuthenticatedUser."""
+    return AuthenticatedUser(
+        id=TEST_USER_ID,
+        email=TEST_USER_EMAIL,
+        role="authenticated",
+        app_metadata={"provider": "email"},
+        user_metadata={"name": "Test Analyst"},
+    )
+
+
+@pytest.fixture(autouse=True)
+def override_auth_dependency(request: pytest.FixtureRequest, mock_auth_user: AuthenticatedUser) -> Generator[None, None, None]:
+    """Default dependency override for get_current_user across non-auth tests."""
+    if "test_auth" in request.node.nodeid:
+        yield
+        return
+
+    app.dependency_overrides[get_current_user] = lambda: mock_auth_user
+    yield
+    app.dependency_overrides.pop(get_current_user, None)
 
 
 class MockStorageBucket:

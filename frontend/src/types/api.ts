@@ -70,3 +70,23 @@ export interface UserProfileResponse {
   user_metadata?: Record<string, unknown>;
 }
 
+export interface DatasetListItem {
+  id: string;
+  filename: string;
+  row_count: number | null;
+  column_count: number | null;
+  size_bytes: number;
+  created_at: string;
+}
+
+export interface AskQuestionResponse {
+  dataset_id: string;
+  question: string;
+  can_answer: boolean;
+  explanation: string;
+  operation?: string | null;
+  column?: string | null;
+  group_by?: string | null;
+  calculation_result?: unknown;
+}
+

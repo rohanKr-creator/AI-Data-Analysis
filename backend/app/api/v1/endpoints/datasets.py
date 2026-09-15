@@ -1,6 +1,8 @@
 import uuid
+from typing import List
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
+from app.core.auth import AuthenticatedUser, get_current_user
 from app.core.database import get_db
 from app.models.dataset import Dataset
 from app.schemas.analytics import AnalyticsRequest, AnalyticsResponse
@@ -9,6 +11,7 @@ from app.schemas.dataset import (
     DatasetUploadResponse,
     DatasetProfileResponse,
     DatasetErrorResponse,
+    DatasetListItem,
 )
 from app.services.ai_analyst_service import ai_analyst_service
 from app.services.analytics_service import (
@@ -33,17 +36,19 @@ router = APIRouter()
     status_code=status.HTTP_201_CREATED,
     responses={
         400: {"model": DatasetErrorResponse, "description": "Invalid file format or empty file"},
+        401: {"model": DatasetErrorResponse, "description": "Authentication required"},
         413: {"model": DatasetErrorResponse, "description": "File size exceeds allowed limit"},
         500: {"model": DatasetErrorResponse, "description": "Server or database error"},
     },
     summary="Upload CSV Dataset",
-    description="Uploads a CSV file, enforces security/size constraints, validates structure, stores it in Supabase Storage, and records metadata in PostgreSQL.",
+    description="Uploads a CSV file, enforces security/size constraints, validates structure, stores it in Supabase Storage, and records metadata tied to the authenticated user in PostgreSQL.",
 )
 async def upload_dataset(
     file: UploadFile = File(..., description="CSV dataset file to upload"),
     db: Session = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> DatasetUploadResponse:
-    """Validate, stream, store uploaded CSV dataset in Supabase Storage, and insert metadata into database."""
+    """Validate, stream, store uploaded CSV dataset in Supabase Storage, and insert metadata with user_id into database."""
     if not file.filename:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -58,7 +63,7 @@ async def upload_dataset(
             content_type=file.content_type,
         )
 
-        # Step 2: Insert dataset metadata row into PostgreSQL (storing Supabase Storage key in filename column)
+        # Step 2: Insert dataset metadata row into PostgreSQL (storing Supabase Storage key in filename column and user_id)
         stored_filename = f"{result.dataset_id}_{result.filename}"
         dataset_record = Dataset(
             id=uuid.UUID(result.dataset_id),
@@ -68,11 +73,13 @@ async def upload_dataset(
             content_type=result.content_type,
             row_count=result.row_count,
             column_count=result.column_count,
+            user_id=current_user.id,
         )
         db.add(dataset_record)
         db.commit()
         db.refresh(dataset_record)
 
+        result.user_id = current_user.id
         return result
 
     except (EmptyFileError, InvalidFileFormatError) as err:
@@ -102,21 +109,58 @@ async def upload_dataset(
 
 
 @router.get(
+    "/datasets",
+    response_model=List[DatasetListItem],
+    status_code=status.HTTP_200_OK,
+    responses={
+        401: {"model": DatasetErrorResponse, "description": "Authentication required"},
+    },
+    summary="List User Datasets",
+    description="Returns all datasets owned by the currently authenticated user, ordered from newest to oldest.",
+)
+def list_user_datasets(
+    db: Session = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(get_current_user),
+) -> List[DatasetListItem]:
+    """Fetch and list all dataset records associated with the current authenticated user's ID."""
+    datasets = (
+        db.query(Dataset)
+        .filter(Dataset.user_id == current_user.id)
+        .order_by(Dataset.created_at.desc())
+        .all()
+    )
+    return [
+        DatasetListItem(
+            id=str(d.id),
+            filename=d.original_filename,
+            row_count=d.row_count,
+            column_count=d.column_count,
+            size_bytes=d.size_bytes,
+            created_at=d.created_at,
+        )
+        for d in datasets
+    ]
+
+
+@router.get(
     "/datasets/{dataset_id}/profile",
     response_model=DatasetProfileResponse,
     status_code=status.HTTP_200_OK,
     responses={
+        401: {"model": DatasetErrorResponse, "description": "Authentication required"},
+        403: {"model": DatasetErrorResponse, "description": "Forbidden: Dataset belongs to another user"},
         404: {"model": DatasetErrorResponse, "description": "Dataset not found"},
         500: {"model": DatasetErrorResponse, "description": "Profiling analysis failure"},
     },
     summary="Get Dataset Profile",
-    description="Generates and returns structural, type inference, and statistical profiling data for a dataset.",
+    description="Generates and returns structural, type inference, and statistical profiling data for a dataset owned by the user.",
 )
 def get_dataset_profile(
     dataset_id: str,
     db: Session = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> DatasetProfileResponse:
-    """Look up dataset in the database, fetch file from Supabase Storage, and return profiling analysis."""
+    """Look up dataset in the database, verify ownership, fetch file from Supabase Storage, and return profiling analysis."""
     try:
         dataset_uuid = uuid.UUID(dataset_id)
     except (ValueError, AttributeError):
@@ -125,7 +169,7 @@ def get_dataset_profile(
             detail=f"Dataset with ID '{dataset_id}' not found.",
         )
 
-    # 1. Query database first (instead of blind filesystem scanning)
+    # 1. Query database first
     dataset = db.query(Dataset).filter(Dataset.id == dataset_uuid).first()
     if not dataset:
         raise HTTPException(
@@ -133,7 +177,14 @@ def get_dataset_profile(
             detail=f"Dataset with ID '{dataset_id}' not found.",
         )
 
-    # 2. Generate profiling analysis by downloading from Supabase Storage
+    # 2. Enforce dataset ownership
+    if dataset.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to access this dataset.",
+        )
+
+    # 3. Generate profiling analysis by downloading from Supabase Storage
     try:
         return profiling_service.generate_profile(
             dataset_id=str(dataset.id),
@@ -158,6 +209,8 @@ def get_dataset_profile(
     status_code=status.HTTP_200_OK,
     responses={
         400: {"model": DatasetErrorResponse, "description": "Validation failure (column not found, invalid operation, incompatible data type)"},
+        401: {"model": DatasetErrorResponse, "description": "Authentication required"},
+        403: {"model": DatasetErrorResponse, "description": "Forbidden: Dataset belongs to another user"},
         404: {"model": DatasetErrorResponse, "description": "Dataset not found in database or storage"},
         500: {"model": DatasetErrorResponse, "description": "Internal server or calculation error"},
     },
@@ -168,8 +221,9 @@ def analyze_dataset(
     dataset_id: str,
     request: AnalyticsRequest,
     db: Session = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> AnalyticsResponse:
-    """Validate parameters, look up dataset, and compute deterministic analytics using Pandas."""
+    """Validate parameters, verify ownership, look up dataset, and compute deterministic analytics using Pandas."""
     try:
         dataset_uuid = uuid.UUID(dataset_id)
     except (ValueError, AttributeError):
@@ -186,7 +240,14 @@ def analyze_dataset(
             detail=f"Dataset with ID '{dataset_id}' not found.",
         )
 
-    # 2. Execute deterministic analytical operation via analytics_service
+    # 2. Enforce dataset ownership
+    if dataset.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to access this dataset.",
+        )
+
+    # 3. Execute deterministic analytical operation via analytics_service
     try:
         return analytics_service.run_analysis(
             dataset_id=str(dataset.id),
@@ -216,6 +277,8 @@ def analyze_dataset(
     status_code=status.HTTP_200_OK,
     responses={
         400: {"model": DatasetErrorResponse, "description": "Invalid question format or parameter"},
+        401: {"model": DatasetErrorResponse, "description": "Authentication required"},
+        403: {"model": DatasetErrorResponse, "description": "Forbidden: Dataset belongs to another user"},
         404: {"model": DatasetErrorResponse, "description": "Dataset not found in database or storage"},
         503: {"model": DatasetErrorResponse, "description": "AI service unavailable or timed out"},
         500: {"model": DatasetErrorResponse, "description": "Internal server or configuration error"},
@@ -227,9 +290,10 @@ def ask_dataset_question(
     dataset_id: str,
     request: AskQuestionRequest,
     db: Session = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> AskQuestionResponse:
     """
-    Look up dataset, validate existence, interpret question via Gemini, run deterministic Pandas math,
+    Look up dataset, verify ownership, validate existence, interpret question via Gemini, run deterministic Pandas math,
     and return verified natural-language explanation.
     """
     try:
@@ -248,7 +312,14 @@ def ask_dataset_question(
             detail=f"Dataset with ID '{dataset_id}' not found.",
         )
 
-    # 2. Process natural language question via AiAnalystService
+    # 2. Enforce dataset ownership
+    if dataset.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to access this dataset.",
+        )
+
+    # 3. Process natural language question via AiAnalystService
     try:
         return ai_analyst_service.ask(
             dataset_id=str(dataset.id),

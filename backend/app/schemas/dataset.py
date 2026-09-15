@@ -12,11 +12,23 @@ class DatasetUploadResponse(BaseModel):
     content_type: str = Field(description="MIME type of the uploaded file")
     row_count: Optional[int] = Field(default=None, description="Total number of data rows")
     column_count: Optional[int] = Field(default=None, description="Total number of columns")
+    user_id: Optional[str] = Field(default=None, description="Supabase authenticated user ID who owns the dataset")
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
         description="UTC timestamp of the upload",
     )
     message: str = Field(default="Dataset uploaded and validated successfully")
+
+
+class DatasetListItem(BaseModel):
+    """Summary item schema for listing datasets owned by the authenticated user."""
+
+    id: str = Field(description="Unique dataset identifier (UUID)")
+    filename: str = Field(description="Original filename of the dataset")
+    row_count: Optional[int] = Field(default=None, description="Total rows in dataset")
+    column_count: Optional[int] = Field(default=None, description="Total columns in dataset")
+    size_bytes: int = Field(description="Total file size in bytes")
+    created_at: datetime = Field(description="UTC timestamp when the dataset was uploaded")
 
 
 class ColumnSummary(BaseModel):
