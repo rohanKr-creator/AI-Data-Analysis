@@ -21,6 +21,7 @@ from app.services.analytics_service import (
 from app.services.dataset_service import dataset_service, DatasetNotFoundError
 from app.services.profiling_service import profiling_service
 from app.services.storage_service import storage_service, StorageFileNotFoundError
+from app.services.usage_service import usage_service
 from app.services.file_validator import (
     EmptyFileError,
     FileSizeExceededError,
@@ -38,6 +39,7 @@ router = APIRouter()
         400: {"model": DatasetErrorResponse, "description": "Invalid file format or empty file"},
         401: {"model": DatasetErrorResponse, "description": "Authentication required"},
         413: {"model": DatasetErrorResponse, "description": "File size exceeds allowed limit"},
+        429: {"model": DatasetErrorResponse, "description": "Daily upload limit reached for current tier"},
         500: {"model": DatasetErrorResponse, "description": "Server or database error"},
     },
     summary="Upload CSV Dataset",
@@ -54,6 +56,9 @@ async def upload_dataset(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Uploaded file must have a valid filename.",
         )
+
+    # Step 0: Enforce daily upload tier quota
+    usage_service.check_quota(db, current_user.id, "upload")
 
     try:
         # Step 1: Validate file, stream to memory, upload to Supabase Storage, and compute row/col counts
@@ -78,6 +83,9 @@ async def upload_dataset(
         db.add(dataset_record)
         db.commit()
         db.refresh(dataset_record)
+
+        # Step 3: Record metered upload event
+        usage_service.record_usage(db, current_user.id, "upload")
 
         result.user_id = current_user.id
         return result
@@ -280,6 +288,7 @@ def analyze_dataset(
         401: {"model": DatasetErrorResponse, "description": "Authentication required"},
         403: {"model": DatasetErrorResponse, "description": "Forbidden: Dataset belongs to another user"},
         404: {"model": DatasetErrorResponse, "description": "Dataset not found in database or storage"},
+        429: {"model": DatasetErrorResponse, "description": "Daily question limit reached for current tier"},
         503: {"model": DatasetErrorResponse, "description": "AI service unavailable or timed out"},
         500: {"model": DatasetErrorResponse, "description": "Internal server or configuration error"},
     },
@@ -319,13 +328,18 @@ def ask_dataset_question(
             detail="You do not have permission to access this dataset.",
         )
 
+    # 2.5 Enforce daily AI question tier quota
+    usage_service.check_quota(db, current_user.id, "ask")
+
     # 3. Process natural language question via AiAnalystService
     try:
-        return ai_analyst_service.ask(
+        result = ai_analyst_service.ask(
             dataset_id=str(dataset.id),
             storage_path=dataset.filename,
             question=request.question,
         )
+        usage_service.record_usage(db, current_user.id, "ask")
+        return result
     except HTTPException:
         raise
     except (DatasetNotFoundError, StorageFileNotFoundError) as err:

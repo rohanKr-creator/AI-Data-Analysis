@@ -12,10 +12,11 @@ import { ChartsTab } from './components/dashboard/ChartsTab';
 import { QualityTab } from './components/dashboard/QualityTab';
 import { AiAnalystTab } from './components/dashboard/AiAnalystTab';
 import { AuthPage } from './components/auth/AuthPage';
-import { getDatasetProfile, uploadDataset } from './services/api';
+import { UpgradeModal } from './components/common/UpgradeModal';
+import { getDatasetProfile, uploadDataset, getUserUsage } from './services/api';
 import { calculateQualityReport } from './services/aiAnalystService';
 import { supabase } from './lib/supabaseClient';
-import type { DatasetProfileResponse, DatasetUploadResponse } from './types/api';
+import type { DatasetProfileResponse, DatasetUploadResponse, UserUsageResponse } from './types/api';
 import type { DashboardTab, ToastNotification } from './types/dashboard';
 import './App.css';
 
@@ -45,6 +46,17 @@ export function App() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
   const [toasts, setToasts] = useState<ToastNotification[]>([]);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [userUsage, setUserUsage] = useState<UserUsageResponse | null>(null);
+  const [upgradeModalOpen, setUpgradeModalOpen] = useState<boolean>(false);
+
+  const refreshUsage = useCallback(async () => {
+    try {
+      const usageData = await getUserUsage();
+      setUserUsage(usageData);
+    } catch {
+      // Offline or unauthenticated
+    }
+  }, []);
 
   useEffect(() => {
     const handleLocationChange = () => {
@@ -83,6 +95,14 @@ export function App() {
       subscription.unsubscribe();
     };
   }, []);
+
+  useEffect(() => {
+    if (currentUser) {
+      refreshUsage();
+    } else {
+      setUserUsage(null);
+    }
+  }, [currentUser, refreshUsage]);
 
   const navigateToAuth = useCallback((mode: 'login' | 'signup' = 'login') => {
     const target = mode === 'signup' ? '/signup' : '/login';
@@ -139,6 +159,7 @@ export function App() {
         const profileData = await getDatasetProfile(data.dataset_id);
         setProfile(profileData);
         setActiveTab('overview');
+        refreshUsage();
         addToast(
           'info',
           'Profiling Complete',
@@ -150,7 +171,7 @@ export function App() {
         setProfileLoading(false);
       }
     },
-    [addToast]
+    [addToast, refreshUsage]
   );
 
   const handleNewUpload = () => {
@@ -196,6 +217,7 @@ EMP-115,Robert Diaz,Engineering,118000,305000,4.7,2020`;
     try {
       await supabase.auth.signOut();
       setCurrentUser(null);
+      setUserUsage(null);
       setUploadedDataset(null);
       setProfile(null);
       window.history.pushState({}, '', '/login');
@@ -268,7 +290,9 @@ EMP-115,Robert Diaz,Engineering,118000,305000,4.7,2020`;
         mobileMenuOpen={mobileMenuOpen}
         onToggleMobileMenu={() => setMobileMenuOpen((prev) => !prev)}
         currentUser={currentUser}
+        userUsage={userUsage}
         onOpenAuth={() => navigateToAuth('login')}
+        onOpenUpgrade={() => setUpgradeModalOpen(true)}
         onSignOut={handleSignOut}
       />
 
@@ -280,6 +304,7 @@ EMP-115,Robert Diaz,Engineering,118000,305000,4.7,2020`;
           <DropzoneUpload
             onUploadSuccess={handleUploadSuccess}
             onUploadError={(errMsg) => addToast('error', 'Upload Issue', errMsg)}
+            onOpenUpgrade={() => setUpgradeModalOpen(true)}
           />
         </main>
       ) : (
@@ -293,6 +318,8 @@ EMP-115,Robert Diaz,Engineering,118000,305000,4.7,2020`;
             mobileOpen={mobileMenuOpen}
             onCloseMobile={() => setMobileMenuOpen(false)}
             onNewUpload={handleNewUpload}
+            userUsage={userUsage}
+            onOpenUpgrade={() => setUpgradeModalOpen(true)}
           />
 
           <main className="dashboard-content-area">
@@ -332,12 +359,25 @@ EMP-115,Robert Diaz,Engineering,118000,305000,4.7,2020`;
 
                 {activeTab === 'quality' && <QualityTab profile={profile} />}
 
-                {activeTab === 'ai-analyst' && <AiAnalystTab profile={profile} />}
+                {activeTab === 'ai-analyst' && (
+                  <AiAnalystTab
+                    profile={profile}
+                    onQuestionAsked={refreshUsage}
+                    onOpenUpgrade={() => setUpgradeModalOpen(true)}
+                  />
+                )}
               </>
             )}
           </main>
         </div>
       )}
+
+      {/* Upgrade Plan Modal */}
+      <UpgradeModal
+        isOpen={upgradeModalOpen}
+        onClose={() => setUpgradeModalOpen(false)}
+        userUsage={userUsage}
+      />
 
       {/* Global Toast Notifications */}
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />

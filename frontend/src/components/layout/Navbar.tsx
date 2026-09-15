@@ -1,4 +1,3 @@
-import React from 'react';
 import {
   Sparkles,
   FileSpreadsheet,
@@ -8,9 +7,10 @@ import {
   PlayCircle,
   LogIn,
   LogOut,
+  Zap,
 } from 'lucide-react';
 import type { User } from '@supabase/supabase-js';
-import type { DatasetProfileResponse } from '../../types/api';
+import type { DatasetProfileResponse, UserUsageResponse } from '../../types/api';
 
 interface NavbarProps {
   profile: DatasetProfileResponse | null;
@@ -19,7 +19,9 @@ interface NavbarProps {
   mobileMenuOpen: boolean;
   onToggleMobileMenu: () => void;
   currentUser: User | null;
+  userUsage?: UserUsageResponse | null;
   onOpenAuth: () => void;
+  onOpenUpgrade?: () => void;
   onSignOut: () => void;
 }
 
@@ -30,7 +32,9 @@ export const Navbar: React.FC<NavbarProps> = ({
   mobileMenuOpen,
   onToggleMobileMenu,
   currentUser,
+  userUsage,
   onOpenAuth,
+  onOpenUpgrade,
   onSignOut,
 }) => {
   return (
@@ -90,6 +94,29 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {currentUser ? (
           <div className="navbar-auth-group">
+            {userUsage && (
+              <button
+                type="button"
+                className={`navbar-tier-pill ${userUsage.tier === 'pro' ? 'tier-pro' : 'tier-free'}`}
+                onClick={userUsage.tier === 'free' ? onOpenUpgrade : undefined}
+                title={
+                  userUsage.tier === 'pro'
+                    ? 'Pro Plan: Unlimited questions & uploads'
+                    : `Free Plan: ${userUsage.usage.ask.used}/${userUsage.usage.ask.limit} questions used today (Click to upgrade)`
+                }
+              >
+                <Zap size={13} className="tier-zap-icon" />
+                <span className="tier-label">
+                  {userUsage.tier === 'pro'
+                    ? 'PRO'
+                    : `${userUsage.usage.ask.used}/${userUsage.usage.ask.limit} Qs`}
+                </span>
+                {userUsage.tier === 'free' && (
+                  <span className="tier-upgrade-prompt">Upgrade</span>
+                )}
+              </button>
+            )}
+
             <div
               className="user-profile-badge authenticated"
               onClick={onOpenAuth}

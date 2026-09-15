@@ -66,8 +66,27 @@ export interface UserProfileResponse {
   user_id: string;
   email: string | null;
   role?: string | null;
+  tier?: string;
   app_metadata?: Record<string, unknown>;
   user_metadata?: Record<string, unknown>;
+}
+
+export interface UsageMetric {
+  used: number;
+  limit: number | null;
+  remaining: number | null;
+  unlimited: boolean;
+  display_name: string;
+}
+
+export interface UserUsageResponse {
+  user_id: string;
+  tier: 'free' | 'pro' | string;
+  usage: {
+    upload: UsageMetric;
+    ask: UsageMetric;
+    [key: string]: UsageMetric;
+  };
 }
 
 export interface DatasetListItem {

@@ -7,6 +7,7 @@ import {
   HelpCircle,
   Lightbulb,
   CornerDownLeft,
+  Zap,
 } from 'lucide-react';
 import type { DatasetProfileResponse } from '../../types/api';
 import type { AiChatMessage } from '../../types/dashboard';
@@ -15,12 +16,19 @@ import {
   generateSuggestedQuestions,
   getNextMessageId,
 } from '../../services/aiAnalystService';
+import { askDatasetQuestion } from '../../services/api';
 
 interface AiAnalystTabProps {
   profile: DatasetProfileResponse;
+  onQuestionAsked?: () => void;
+  onOpenUpgrade?: () => void;
 }
 
-export const AiAnalystTab: React.FC<AiAnalystTabProps> = ({ profile }) => {
+export const AiAnalystTab: React.FC<AiAnalystTabProps> = ({
+  profile,
+  onQuestionAsked,
+  onOpenUpgrade,
+}) => {
   const [messages, setMessages] = useState<AiChatMessage[]>([
     {
       id: 'welcome-msg',
@@ -59,16 +67,53 @@ export const AiAnalystTab: React.FC<AiAnalystTabProps> = ({ profile }) => {
     setIsThinking(true);
 
     try {
-      const aiResponse = await askAiAnalyst(query, profile);
-      setMessages((prev) => [...prev, aiResponse]);
-    } catch {
-      const errorResponse: AiChatMessage = {
+      // 1. Invoke backend AI Analyst endpoint (which checks & enforces tier quota)
+      const res = await askDatasetQuestion(profile.dataset_id, query);
+      const aiResponse: AiChatMessage = {
         id: getNextMessageId(),
         role: 'assistant',
-        content: 'I encountered an error processing your query against this dataset schema.',
+        content: res.explanation,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        insights: [
+          res.operation && res.column ? `Executed operation: ${res.operation} on column "${res.column}"` : null,
+          res.group_by ? `Segmented by: ${res.group_by}` : null,
+        ].filter(Boolean) as string[],
+        suggestedFollowUps: generateSuggestedQuestions(profile),
       };
-      setMessages((prev) => [...prev, errorResponse]);
+      setMessages((prev) => [...prev, aiResponse]);
+      onQuestionAsked?.();
+    } catch (err) {
+      const errMsg = (err as Error).message || 'Failed to process question.';
+      const isRateLimit = errMsg.includes('limit reached') || errMsg.includes('429');
+
+      if (isRateLimit) {
+        // Enforce 429 Too Many Requests in UI with direct Upgrade CTA
+        const rateLimitResponse: AiChatMessage = {
+          id: getNextMessageId(),
+          role: 'assistant',
+          content: errMsg,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          insights: [
+            'Daily question allowance for the Free tier is exhausted.',
+            'Upgrade to Pro for unlimited daily AI queries.',
+          ],
+        };
+        setMessages((prev) => [...prev, rateLimitResponse]);
+      } else {
+        // Fall back to client-side heuristics if network/AI service unavailable
+        try {
+          const fallbackResponse = await askAiAnalyst(query, profile);
+          setMessages((prev) => [...prev, fallbackResponse]);
+        } catch {
+          const errorResponse: AiChatMessage = {
+            id: getNextMessageId(),
+            role: 'assistant',
+            content: `Error: ${errMsg}`,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          };
+          setMessages((prev) => [...prev, errorResponse]);
+        }
+      }
     } finally {
       setIsThinking(false);
     }
@@ -126,6 +171,19 @@ export const AiAnalystTab: React.FC<AiAnalystTabProps> = ({ profile }) => {
                         <li key={idx}>{insight}</li>
                       ))}
                     </ul>
+                  </div>
+                )}
+
+                {msg.content.includes('Upgrade to Pro') && onOpenUpgrade && (
+                  <div className="chat-upgrade-banner">
+                    <button
+                      type="button"
+                      className="btn btn-primary btn-sm btn-with-icon chat-upgrade-btn"
+                      onClick={onOpenUpgrade}
+                    >
+                      <Zap size={14} />
+                      <span>Upgrade to Pro for Unlimited Access</span>
+                    </button>
                   </div>
                 )}
 

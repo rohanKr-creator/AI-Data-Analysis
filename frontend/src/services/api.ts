@@ -6,6 +6,7 @@ import type {
   DatasetProfileResponse,
   DatasetUploadResponse,
   UserProfileResponse,
+  UserUsageResponse,
 } from '../types/api';
 import { supabase } from '../lib/supabaseClient';
 
@@ -50,6 +51,9 @@ async function parseErrorMessage(response: Response): Promise<string> {
   }
   if (response.status === 403) {
     return 'Access forbidden: You do not have permission to access this dataset.';
+  }
+  if (response.status === 429) {
+    return 'Daily tier limit reached. Please upgrade to Pro for unlimited access.';
   }
 
   return response.statusText || `Request failed with status code ${response.status}`;
@@ -203,6 +207,30 @@ export async function getAuthMe(token: string): Promise<UserProfileResponse> {
       method: 'GET',
       headers: {
         Authorization: `Bearer ${token}`,
+      },
+    });
+  } catch (err) {
+    throw new Error(
+      `Unable to connect to backend server at ${API_BASE_URL}. Ensure the backend is running. (${(err as Error).message})`
+    );
+  }
+
+  if (!response.ok) {
+    const message = await parseErrorMessage(response);
+    throw new Error(message);
+  }
+
+  return response.json();
+}
+
+export async function getUserUsage(): Promise<UserUsageResponse> {
+  const authHeaders = await getAuthHeaders();
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}/auth/usage`, {
+      method: 'GET',
+      headers: {
+        ...authHeaders,
       },
     });
   } catch (err) {

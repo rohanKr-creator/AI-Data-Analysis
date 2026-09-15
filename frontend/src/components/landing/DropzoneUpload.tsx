@@ -6,6 +6,7 @@ import {
   PlayCircle,
   FileText,
   ShieldAlert,
+  Zap,
 } from 'lucide-react';
 import { uploadDataset } from '../../services/api';
 import type { DatasetUploadResponse } from '../../types/api';
@@ -13,11 +14,13 @@ import type { DatasetUploadResponse } from '../../types/api';
 interface DropzoneUploadProps {
   onUploadSuccess: (data: DatasetUploadResponse) => void;
   onUploadError?: (error: string) => void;
+  onOpenUpgrade?: () => void;
 }
 
 export const DropzoneUpload: React.FC<DropzoneUploadProps> = ({
   onUploadSuccess,
   onUploadError,
+  onOpenUpgrade,
 }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -213,7 +216,19 @@ EMP-115,Robert Diaz,Engineering,118000,305000,4.7,2020`;
         <div className="dropzone-alert alert alert-error" role="alert">
           <ShieldAlert size={18} className="alert-icon" />
           <div className="alert-content">
-            <strong>Upload Failed:</strong> {error}
+            <div>
+              <strong>Upload Failed:</strong> {error}
+            </div>
+            {error.includes('Upgrade to Pro') && onOpenUpgrade && (
+              <button
+                type="button"
+                className="btn btn-primary btn-sm btn-with-icon dropzone-upgrade-btn"
+                onClick={onOpenUpgrade}
+              >
+                <Zap size={13} />
+                <span>Upgrade to Pro</span>
+              </button>
+            )}
           </div>
         </div>
       )}
