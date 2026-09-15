@@ -34,6 +34,7 @@ const getRouteFromPath = (): { view: 'dashboard' | 'auth'; mode: 'login' | 'sign
 
 export function App() {
   const initialRoute = getRouteFromPath();
+  const [sessionLoading, setSessionLoading] = useState<boolean>(true);
   const [currentView, setCurrentView] = useState<'dashboard' | 'auth'>(initialRoute.view);
   const [authMode, setAuthMode] = useState<'login' | 'signup'>(initialRoute.mode);
   const [uploadedDataset, setUploadedDataset] =
@@ -59,14 +60,23 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setCurrentUser(session?.user ?? null);
-    });
+    supabase.auth
+      .getSession()
+      .then(({ data: { session } }) => {
+        setCurrentUser(session?.user ?? null);
+      })
+      .catch(() => {
+        setCurrentUser(null);
+      })
+      .finally(() => {
+        setSessionLoading(false);
+      });
 
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setCurrentUser(session?.user ?? null);
+      setSessionLoading(false);
     });
 
     return () => {
@@ -100,6 +110,19 @@ export function App() {
   const dismissToast = useCallback((id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
+
+  const handleAuthSuccess = useCallback(
+    (email: string, mode: 'login' | 'signup') => {
+      window.history.pushState({}, '', '/');
+      setCurrentView('dashboard');
+      addToast(
+        'success',
+        mode === 'login' ? 'Welcome Back!' : 'Account Created!',
+        `Signed in as ${email}`
+      );
+    },
+    [addToast]
+  );
 
   const handleUploadSuccess = useCallback(
     async (data: DatasetUploadResponse) => {
@@ -172,6 +195,12 @@ EMP-115,Robert Diaz,Engineering,118000,305000,4.7,2020`;
   const handleSignOut = useCallback(async () => {
     try {
       await supabase.auth.signOut();
+      setCurrentUser(null);
+      setUploadedDataset(null);
+      setProfile(null);
+      window.history.pushState({}, '', '/login');
+      setAuthMode('login');
+      setCurrentView('auth');
       addToast('info', 'Signed Out', 'You have been signed out successfully.');
     } catch (err) {
       addToast('error', 'Sign Out Error', (err as Error).message);
@@ -180,6 +209,41 @@ EMP-115,Robert Diaz,Engineering,118000,305000,4.7,2020`;
 
   const qualityScore = profile ? calculateQualityReport(profile).score : undefined;
 
+  // 1. Session check loading state (prevents flash of unauthenticated page)
+  if (sessionLoading) {
+    return (
+      <div className="saas-app-layout session-loading-screen">
+        <div className="loading-canvas">
+          <div className="spinner-large" />
+          <h3 style={{ margin: 0, color: 'var(--text-primary)' }}>Initializing AI Data Analyst...</h3>
+          <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: '13px' }}>Verifying secure session</p>
+        </div>
+      </div>
+    );
+  }
+
+  // 2. Gate: Unauthenticated users ONLY see AuthPage (no platform/landing access)
+  if (!currentUser) {
+    return (
+      <div className="saas-app-layout">
+        <AuthPage
+          initialMode={authMode}
+          currentUser={null}
+          onBack={() => {
+            addToast(
+              'info',
+              'Authentication Required',
+              'Please log in or create an account to access the platform.'
+            );
+          }}
+          onAuthSuccess={handleAuthSuccess}
+        />
+        <ToastContainer toasts={toasts} onDismiss={dismissToast} />
+      </div>
+    );
+  }
+
+  // 3. Authenticated user explicitly viewing Auth/Profile view
   if (currentView === 'auth') {
     return (
       <div className="saas-app-layout">
@@ -187,14 +251,7 @@ EMP-115,Robert Diaz,Engineering,118000,305000,4.7,2020`;
           initialMode={authMode}
           currentUser={currentUser}
           onBack={handleBackToWorkspace}
-          onAuthSuccess={(email, mode) => {
-            handleBackToWorkspace();
-            addToast(
-              'success',
-              mode === 'login' ? 'Welcome Back!' : 'Account Created!',
-              `Signed in as ${email}`
-            );
-          }}
+          onAuthSuccess={handleAuthSuccess}
         />
         <ToastContainer toasts={toasts} onDismiss={dismissToast} />
       </div>
