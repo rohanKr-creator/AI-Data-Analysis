@@ -11,7 +11,7 @@ import { AnalysisTab } from './components/dashboard/AnalysisTab';
 import { ChartsTab } from './components/dashboard/ChartsTab';
 import { QualityTab } from './components/dashboard/QualityTab';
 import { AiAnalystTab } from './components/dashboard/AiAnalystTab';
-import { AuthModal } from './components/auth/AuthModal';
+import { AuthPage } from './components/auth/AuthPage';
 import { getDatasetProfile, uploadDataset } from './services/api';
 import { calculateQualityReport } from './services/aiAnalystService';
 import { supabase } from './lib/supabaseClient';
@@ -21,7 +21,21 @@ import './App.css';
 
 let toastCounter = 0;
 
+const getRouteFromPath = (): { view: 'dashboard' | 'auth'; mode: 'login' | 'signup' } => {
+  const path = window.location.pathname.toLowerCase();
+  if (path === '/signup') {
+    return { view: 'auth', mode: 'signup' };
+  }
+  if (path === '/login' || path === '/auth') {
+    return { view: 'auth', mode: 'login' };
+  }
+  return { view: 'dashboard', mode: 'login' };
+};
+
 export function App() {
+  const initialRoute = getRouteFromPath();
+  const [currentView, setCurrentView] = useState<'dashboard' | 'auth'>(initialRoute.view);
+  const [authMode, setAuthMode] = useState<'login' | 'signup'>(initialRoute.mode);
   const [uploadedDataset, setUploadedDataset] =
     useState<DatasetUploadResponse | null>(null);
   const [profile, setProfile] = useState<DatasetProfileResponse | null>(null);
@@ -30,7 +44,19 @@ export function App() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
   const [toasts, setToasts] = useState<ToastNotification[]>([]);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [authModalOpen, setAuthModalOpen] = useState<boolean>(false);
+
+  useEffect(() => {
+    const handleLocationChange = () => {
+      const route = getRouteFromPath();
+      setCurrentView(route.view);
+      setAuthMode(route.mode);
+    };
+
+    window.addEventListener('popstate', handleLocationChange);
+    return () => {
+      window.removeEventListener('popstate', handleLocationChange);
+    };
+  }, []);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -46,6 +72,18 @@ export function App() {
     return () => {
       subscription.unsubscribe();
     };
+  }, []);
+
+  const navigateToAuth = useCallback((mode: 'login' | 'signup' = 'login') => {
+    const target = mode === 'signup' ? '/signup' : '/login';
+    window.history.pushState({}, '', target);
+    setAuthMode(mode);
+    setCurrentView('auth');
+  }, []);
+
+  const handleBackToWorkspace = useCallback(() => {
+    window.history.pushState({}, '', '/');
+    setCurrentView('dashboard');
   }, []);
 
   const addToast = useCallback(
@@ -142,6 +180,27 @@ EMP-115,Robert Diaz,Engineering,118000,305000,4.7,2020`;
 
   const qualityScore = profile ? calculateQualityReport(profile).score : undefined;
 
+  if (currentView === 'auth') {
+    return (
+      <div className="saas-app-layout">
+        <AuthPage
+          initialMode={authMode}
+          currentUser={currentUser}
+          onBack={handleBackToWorkspace}
+          onAuthSuccess={(email, mode) => {
+            handleBackToWorkspace();
+            addToast(
+              'success',
+              mode === 'login' ? 'Welcome Back!' : 'Account Created!',
+              `Signed in as ${email}`
+            );
+          }}
+        />
+        <ToastContainer toasts={toasts} onDismiss={dismissToast} />
+      </div>
+    );
+  }
+
   return (
     <div className="saas-app-layout">
       {/* Top SaaS Header */}
@@ -152,7 +211,7 @@ EMP-115,Robert Diaz,Engineering,118000,305000,4.7,2020`;
         mobileMenuOpen={mobileMenuOpen}
         onToggleMobileMenu={() => setMobileMenuOpen((prev) => !prev)}
         currentUser={currentUser}
-        onOpenAuth={() => setAuthModalOpen(true)}
+        onOpenAuth={() => navigateToAuth('login')}
         onSignOut={handleSignOut}
       />
 
@@ -225,20 +284,6 @@ EMP-115,Robert Diaz,Engineering,118000,305000,4.7,2020`;
 
       {/* Global Toast Notifications */}
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
-
-      {/* Supabase Auth Modal */}
-      <AuthModal
-        isOpen={authModalOpen}
-        onClose={() => setAuthModalOpen(false)}
-        currentUser={currentUser}
-        onAuthSuccess={(email, mode) => {
-          addToast(
-            'success',
-            mode === 'login' ? 'Welcome Back!' : 'Account Created!',
-            `Signed in as ${email}`
-          );
-        }}
-      />
     </div>
   );
 }
