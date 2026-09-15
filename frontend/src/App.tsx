@@ -1,4 +1,5 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
+import type { User } from '@supabase/supabase-js';
 import { Navbar } from './components/layout/Navbar';
 import { Sidebar } from './components/layout/Sidebar';
 import { ToastContainer } from './components/common/ToastContainer';
@@ -10,8 +11,10 @@ import { AnalysisTab } from './components/dashboard/AnalysisTab';
 import { ChartsTab } from './components/dashboard/ChartsTab';
 import { QualityTab } from './components/dashboard/QualityTab';
 import { AiAnalystTab } from './components/dashboard/AiAnalystTab';
+import { AuthModal } from './components/auth/AuthModal';
 import { getDatasetProfile, uploadDataset } from './services/api';
 import { calculateQualityReport } from './services/aiAnalystService';
+import { supabase } from './lib/supabaseClient';
 import type { DatasetProfileResponse, DatasetUploadResponse } from './types/api';
 import type { DashboardTab, ToastNotification } from './types/dashboard';
 import './App.css';
@@ -26,6 +29,24 @@ export function App() {
   const [activeTab, setActiveTab] = useState<DashboardTab>('overview');
   const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
   const [toasts, setToasts] = useState<ToastNotification[]>([]);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [authModalOpen, setAuthModalOpen] = useState<boolean>(false);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setCurrentUser(session?.user ?? null);
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setCurrentUser(session?.user ?? null);
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
 
   const addToast = useCallback(
     (type: 'success' | 'error' | 'info', title: string, message: string) => {
@@ -110,6 +131,15 @@ EMP-115,Robert Diaz,Engineering,118000,305000,4.7,2020`;
     }
   }, [addToast, handleUploadSuccess]);
 
+  const handleSignOut = useCallback(async () => {
+    try {
+      await supabase.auth.signOut();
+      addToast('info', 'Signed Out', 'You have been signed out successfully.');
+    } catch (err) {
+      addToast('error', 'Sign Out Error', (err as Error).message);
+    }
+  }, [addToast]);
+
   const qualityScore = profile ? calculateQualityReport(profile).score : undefined;
 
   return (
@@ -121,6 +151,9 @@ EMP-115,Robert Diaz,Engineering,118000,305000,4.7,2020`;
         onLoadDemo={handleLoadDemo}
         mobileMenuOpen={mobileMenuOpen}
         onToggleMobileMenu={() => setMobileMenuOpen((prev) => !prev)}
+        currentUser={currentUser}
+        onOpenAuth={() => setAuthModalOpen(true)}
+        onSignOut={handleSignOut}
       />
 
       {/* Main Body */}
@@ -192,6 +225,20 @@ EMP-115,Robert Diaz,Engineering,118000,305000,4.7,2020`;
 
       {/* Global Toast Notifications */}
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
+
+      {/* Supabase Auth Modal */}
+      <AuthModal
+        isOpen={authModalOpen}
+        onClose={() => setAuthModalOpen(false)}
+        currentUser={currentUser}
+        onAuthSuccess={(email, mode) => {
+          addToast(
+            'success',
+            mode === 'login' ? 'Welcome Back!' : 'Account Created!',
+            `Signed in as ${email}`
+          );
+        }}
+      />
     </div>
   );
 }

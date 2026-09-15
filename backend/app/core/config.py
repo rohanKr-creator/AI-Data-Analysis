@@ -42,10 +42,18 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: str = ""
     GEMINI_MODEL: str = "gemini-3.6-flash"
 
-    # Supabase Cloud Storage Settings
+    # Supabase Cloud Storage & Auth Settings
     SUPABASE_URL: str = ""
     SUPABASE_SERVICE_ROLE_KEY: str = ""
     SUPABASE_BUCKET_NAME: str = "datasets"
+    SUPABASE_JWT_SECRET: str = ""
+
+    @property
+    def supabase_jwks_url(self) -> str:
+        """Returns the public JWKS endpoint for Supabase Auth JWT verification."""
+        if not self.SUPABASE_URL:
+            return ""
+        return f"{self.SUPABASE_URL.rstrip('/')}/auth/v1/.well-known/jwks.json"
 
     @property
     def upload_path(self) -> Path:

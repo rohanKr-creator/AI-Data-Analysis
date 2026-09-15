@@ -3,6 +3,7 @@ import type {
   AnalyticsResponse,
   DatasetProfileResponse,
   DatasetUploadResponse,
+  UserProfileResponse,
 } from '../types/api';
 
 const API_BASE_URL =
@@ -104,3 +105,27 @@ export async function analyzeDataset(
 
   return response.json();
 }
+
+export async function getAuthMe(token: string): Promise<UserProfileResponse> {
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}/auth/me`, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+  } catch (err) {
+    throw new Error(
+      `Unable to connect to backend server at ${API_BASE_URL}. Ensure the backend is running. (${(err as Error).message})`
+    );
+  }
+
+  if (!response.ok) {
+    const message = await parseErrorMessage(response);
+    throw new Error(message);
+  }
+
+  return response.json();
+}
+

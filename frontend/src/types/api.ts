@@ -61,3 +61,12 @@ export interface AnalyticsResponse {
   row_count: number;
   message: string;
 }
+
+export interface UserProfileResponse {
+  user_id: string;
+  email: string | null;
+  role?: string | null;
+  app_metadata?: Record<string, unknown>;
+  user_metadata?: Record<string, unknown>;
+}
+
