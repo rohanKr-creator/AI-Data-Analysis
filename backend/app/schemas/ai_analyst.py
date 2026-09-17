@@ -29,10 +29,12 @@ class AnalystIntent(BaseModel):
             "median",
             "std",
             "value_counts",
+            "histogram",
+            "describe",
         ]
     ] = Field(
         default=None,
-        description="Deterministic analytical operation to execute: mean, sum, min, max, count, median, std, or value_counts.",
+        description="Deterministic analytical operation to execute: mean, sum, min, max, count, median, std, value_counts, histogram, or describe.",
     )
     column: Optional[str] = Field(
         default=None,
@@ -62,6 +64,14 @@ class AskQuestionResponse(BaseModel):
         default=None,
         description="The dataset column analyzed, or None if unanswerable.",
     )
+    operation: Optional[str] = Field(
+        default=None,
+        description="Backward-compatible alias for operation_used.",
+    )
+    column: Optional[str] = Field(
+        default=None,
+        description="Backward-compatible alias for column_used.",
+    )
     group_by: Optional[str] = Field(
         default=None,
         description="The group_by column used for category breakdown, if applicable.",
@@ -73,7 +83,15 @@ class AskQuestionResponse(BaseModel):
     answer: str = Field(
         description="Natural-language sentence explaining the verified computed result to the user.",
     )
+    explanation: Optional[str] = Field(
+        default=None,
+        description="Backward-compatible alias for answer.",
+    )
     row_count: Optional[int] = Field(
         default=None,
         description="Number of dataset rows involved in the calculation, or None.",
+    )
+    can_answer: Optional[bool] = Field(
+        default=True,
+        description="Indicates if the question could be answered from dataset operations.",
     )

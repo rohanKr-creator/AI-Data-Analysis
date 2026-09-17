@@ -63,6 +63,7 @@ class ProfilingService:
         storage_path: Optional[str] = None,
         original_filename: Optional[str] = None,
         file_path: Optional[Union[Path, str]] = None,
+        df: Optional[pd.DataFrame] = None,
     ) -> DatasetProfileResponse:
         """
         Generate a comprehensive profile of the specified dataset.
@@ -72,6 +73,7 @@ class ProfilingService:
             storage_path: Storage path/key within Supabase Storage bucket.
             original_filename: Original filename of the dataset.
             file_path: Optional local path for backward compatibility.
+            df: Optional already-loaded DataFrame to avoid re-reading file.
             
         Returns:
             DatasetProfileResponse containing structural and statistical properties.
@@ -79,9 +81,19 @@ class ProfilingService:
         Raises:
             DatasetNotFoundError: If dataset does not exist in database or storage.
         """
-        if file_path is not None and isinstance(file_path, Path) and file_path.is_file():
-            df = pd.read_csv(file_path)
-            original_filename = original_filename or file_path.name
+        if df is not None:
+            if not original_filename:
+                if file_path is not None:
+                    original_filename = Path(file_path).name
+                else:
+                    original_filename = f"dataset_{dataset_id}.csv"
+        elif file_path is not None and (
+            isinstance(file_path, Path)
+            or (isinstance(file_path, str) and Path(file_path).is_file())
+        ):
+            file_p = Path(file_path)
+            df = pd.read_csv(file_p)
+            original_filename = original_filename or file_p.name
         else:
             # If file_path was passed as a string storage path
             if isinstance(file_path, str) and not storage_path:

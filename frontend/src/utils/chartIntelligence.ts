@@ -208,7 +208,7 @@ export function isCategoricalDimension(
   }
 
   // Obvious business metrics (revenue, sales, price, salary, quantity, profit) are metrics, not grouping dimensions
-  const lowerName = col.name.toLowerCase();
+  const lowerName = (col.name || '').toLowerCase();
   if (PRIMARY_METRIC_KEYWORDS.some((kw) => lowerName.includes(kw))) {
     return false;
   }
@@ -263,7 +263,7 @@ function scoreCategoricalDimension(
   _profile: DatasetProfileResponse
 ): number {
   let score = 10;
-  const nameLower = col.name.toLowerCase();
+  const nameLower = (col.name || '').toLowerCase();
 
   // Semantic keyword match boost
   for (const kw of CATEGORY_KEYWORDS) {
@@ -349,7 +349,7 @@ function scoreNumericMetric(
   profile: DatasetProfileResponse
 ): number {
   let score = 10;
-  const nameLower = col.name.toLowerCase();
+  const nameLower = (col.name || '').toLowerCase();
 
   // Tier 1 business volume/financial metrics (sales, revenue, price, quantity)
   const topTier = ['revenue', 'sales', 'profit', 'quantity', 'qty', 'amount'];
@@ -384,7 +384,7 @@ function scoreNumericMetric(
  * Intensity/Rate metrics (score, rating, percentage, ratio, age) -> mean
  */
 export function getPreferredAggregation(metricName: string): 'sum' | 'mean' {
-  const lower = metricName.toLowerCase();
+  const lower = (metricName || '').toLowerCase();
   const meanKeywords = [
     'rating',
     'score',

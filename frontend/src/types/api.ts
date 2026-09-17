@@ -99,13 +99,18 @@ export interface DatasetListItem {
 }
 
 export interface AskQuestionResponse {
-  dataset_id: string;
   question: string;
-  can_answer: boolean;
-  explanation: string;
+  answer: string;
+  operation_used?: string | null;
+  column_used?: string | null;
+  group_by?: string | null;
+  result?: unknown;
+  row_count?: number | null;
+  explanation?: string;
   operation?: string | null;
   column?: string | null;
-  group_by?: string | null;
   calculation_result?: unknown;
+  dataset_id?: string;
+  can_answer?: boolean;
 }
 

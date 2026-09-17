@@ -68,6 +68,10 @@ def test_ask_valid_question_numeric_mean(client: TestClient):
     # Verify Pandas did the math: (75000 + 85000 + 60000 + 65000 + 70000) / 5 = 71000.0
     assert data["result"] == 71000.0
     assert data["answer"] == "The average salary across the company is $71,000.00."
+    assert data["explanation"] == "The average salary across the company is $71,000.00."
+    assert data["operation"] == "mean"
+    assert data["column"] == "salary"
+    assert data["can_answer"] is True
     assert data["row_count"] == 5
 
     # Verify Gemini was called twice: once for intent, once for explanation
@@ -145,6 +149,8 @@ def test_ask_unmapped_or_unrelated_question(client: TestClient):
     assert data["column_used"] is None
     assert data["result"] is None
     assert "I can't answer that with the available operations" in data["answer"]
+    assert "I can't answer that with the available operations" in data["explanation"]
+    assert data["can_answer"] is False
     # Only one call to Gemini (no explanation call needed for unmapped questions)
     assert mock_client.models.generate_content.call_count == 1
 
@@ -237,3 +243,172 @@ def test_ask_gemini_api_error_handled_gracefully(client: TestClient):
 
     assert response.status_code == 503
     assert "rate limit" in response.json()["detail"].lower() or "gemini api error" in response.json()["detail"].lower()
+
+
+def test_ask_suggested_multi_stat_question(client: TestClient):
+    """
+    Test that general/multi-stat questions like 'What are the key statistics and distribution for salary?'
+    correctly map to a single deterministic operation (mean) and succeed.
+    """
+    dataset_id = _upload_sample_dataset(client)
+
+    mock_intent_res = MagicMock()
+    mock_intent_res.text = json.dumps({
+        "can_answer": True,
+        "operation": "mean",
+        "column": "salary",
+        "group_by": None,
+        "reason": None,
+    })
+
+    mock_explain_res = MagicMock()
+    mock_explain_res.text = "Across 5 records, the average salary is $71,000."
+
+    mock_client = MagicMock()
+    mock_client.models.generate_content.side_effect = [
+        mock_intent_res,
+        mock_explain_res,
+    ]
+
+    with patch("app.services.ai_analyst_service.ai_analyst_service.get_client", return_value=mock_client):
+        payload = {"question": "What are the key statistics and distribution for salary?"}
+        response = client.post(f"/api/v1/datasets/{dataset_id}/ask", json=payload)
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["can_answer"] is True
+    assert data["operation_used"] == "mean"
+    assert data["column_used"] == "salary"
+    assert data["result"] == 71000.0
+    assert "71,000" in data["answer"]
+
+
+def test_ask_suggested_executive_summary_question(client: TestClient):
+    """
+    Test that executive summary questions like 'Provide an executive summary of dataset'
+    map to count on the dataset and return can_answer=True.
+    """
+    dataset_id = _upload_sample_dataset(client)
+
+    mock_summary_res = MagicMock()
+    mock_summary_res.text = "The dataset company_staff.csv contains 5 rows and 4 columns (2 numeric, 2 text). Average salary is 71000."
+
+    mock_client = MagicMock()
+    mock_client.models.generate_content.return_value = mock_summary_res
+
+    with patch("app.services.ai_analyst_service.ai_analyst_service.get_client", return_value=mock_client):
+        payload = {"question": "Provide an executive summary of company_staff.csv"}
+        response = client.post(f"/api/v1/datasets/{dataset_id}/ask", json=payload)
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["can_answer"] is True
+    assert data["operation_used"] == "executive_summary"
+    assert data["result"]["row_count"] == 5
+    assert data["result"]["column_count"] == 5
+    assert "company_staff.csv" in data["answer"]
+
+
+def test_ask_suggested_data_quality_question(client: TestClient):
+    """
+    Test that data quality questions like 'Evaluate data quality, completeness, and hygiene'
+    use profiling_service to report clean columns and completeness.
+    """
+    dataset_id = _upload_sample_dataset(client)
+
+    mock_quality_res = MagicMock()
+    mock_quality_res.text = "All 5 columns across 5 rows have zero missing values (100% complete)."
+
+    mock_client = MagicMock()
+    mock_client.models.generate_content.return_value = mock_quality_res
+
+    with patch("app.services.ai_analyst_service.ai_analyst_service.get_client", return_value=mock_client):
+        payload = {"question": "Evaluate data quality, completeness, and hygiene"}
+        response = client.post(f"/api/v1/datasets/{dataset_id}/ask", json=payload)
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["can_answer"] is True
+    assert data["operation_used"] == "data_quality"
+    assert data["result"]["clean_columns"] == 5
+    assert data["result"]["total_columns"] == 5
+    assert "zero missing values" in data["answer"]
+
+
+def test_ask_key_statistics_distribution_question(client: TestClient):
+    """
+    Test that questions asking for 'key statistics and distribution' map to 'describe' (or fallback)
+    and return statistical summary for the column.
+    """
+    dataset_id = _upload_sample_dataset(client)
+
+    mock_intent_res = MagicMock()
+    mock_intent_res.text = json.dumps({
+        "can_answer": True,
+        "operation": "describe",
+        "column": "salary",
+        "group_by": None,
+        "reason": None,
+    })
+
+    mock_explain_res = MagicMock()
+    mock_explain_res.text = "For salary, values average 74000 with a standard deviation of 17888 across 5 employees."
+
+    mock_client = MagicMock()
+    mock_client.models.generate_content.side_effect = [
+        mock_intent_res,
+        mock_explain_res,
+    ]
+
+    with patch("app.services.ai_analyst_service.ai_analyst_service.get_client", return_value=mock_client):
+        payload = {"question": "What are the key statistics and distribution for salary?"}
+        response = client.post(f"/api/v1/datasets/{dataset_id}/ask", json=payload)
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["can_answer"] is True
+    assert data["operation_used"] == "describe"
+    assert data["column_used"] == "salary"
+    assert isinstance(data["result"], dict)
+    assert data["result"]["mean"] == 71000.0
+    assert data["result"]["count"] == 5
+
+
+def test_ask_case_insensitive_column_and_fallback(client: TestClient):
+    """
+    Test that even if Gemini returns lowercase column or can_answer=False on key statistics,
+    the fallback detects the numeric column and answers with describe.
+    """
+    dataset_id = _upload_sample_dataset(client)
+
+    # Gemini returns can_answer=False with reason
+    mock_intent_res = MagicMock()
+    mock_intent_res.text = json.dumps({
+        "can_answer": False,
+        "operation": None,
+        "column": None,
+        "group_by": None,
+        "reason": "Distribution is not a single operation.",
+    })
+
+    mock_explain_res = MagicMock()
+    mock_explain_res.text = "The statistical breakdown for Salary shows an average of 74000."
+
+    mock_client = MagicMock()
+    mock_client.models.generate_content.side_effect = [
+        mock_intent_res,
+        mock_explain_res,
+    ]
+
+    with patch("app.services.ai_analyst_service.ai_analyst_service.get_client", return_value=mock_client):
+        payload = {"question": "What are the key statistics and distribution for Salary?"}
+        response = client.post(f"/api/v1/datasets/{dataset_id}/ask", json=payload)
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["can_answer"] is True
+    assert data["operation_used"] == "describe"
+    assert data["column_used"] == "salary"
+    assert data["result"]["count"] == 5
+
+

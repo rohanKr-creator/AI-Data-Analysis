@@ -69,22 +69,59 @@ export const AiAnalystTab: React.FC<AiAnalystTabProps> = ({
     try {
       // 1. Invoke backend AI Analyst endpoint (which checks & enforces tier quota)
       const res = await askDatasetQuestion(profile.dataset_id, query);
+      const answerContent =
+        res.answer ||
+        res.explanation ||
+        (typeof res.result !== 'undefined' && res.result !== null
+          ? `Analysis result: ${JSON.stringify(res.result)}`
+          : 'Analysis complete, but no answer text was returned.');
+
+      const opUsed = res.operation_used || res.operation;
+      const colUsed = res.column_used || res.column;
+      const groupByUsed = res.group_by;
+
+      // If the backend indicates it cannot answer via deterministic single aggregation,
+      // fallback to rich client-side heuristics (executive summary, data quality audit, etc.)
+      const isUnanswerable =
+        res.can_answer === false ||
+        (!opUsed && !colUsed) ||
+        (answerContent && answerContent.includes("I can't answer that with the available operations"));
+
+      if (isUnanswerable) {
+        try {
+          const fallbackResponse = await askAiAnalyst(query, profile);
+          setMessages((prev) => [...prev, fallbackResponse]);
+          onQuestionAsked?.();
+          return;
+        } catch {
+          // Fall through to display backend message
+        }
+      }
+
       const aiResponse: AiChatMessage = {
         id: getNextMessageId(),
         role: 'assistant',
-        content: res.explanation,
+        content: answerContent,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         insights: [
-          res.operation && res.column ? `Executed operation: ${res.operation} on column "${res.column}"` : null,
-          res.group_by ? `Segmented by: ${res.group_by}` : null,
+          opUsed && colUsed ? `Executed operation: ${opUsed} on column "${colUsed}"` : null,
+          groupByUsed ? `Segmented by: ${groupByUsed}` : null,
+          res.row_count != null ? `Calculated across ${res.row_count.toLocaleString()} rows` : null,
         ].filter(Boolean) as string[],
         suggestedFollowUps: generateSuggestedQuestions(profile),
       };
       setMessages((prev) => [...prev, aiResponse]);
       onQuestionAsked?.();
     } catch (err) {
-      const errMsg = (err as Error).message || 'Failed to process question.';
-      const isRateLimit = errMsg.includes('limit reached') || errMsg.includes('429');
+      const errMsg =
+        (err instanceof Error ? err.message : typeof err === 'string' ? err : '') ||
+        'Failed to process question.';
+      const lowerErr = errMsg.toLowerCase();
+      const isRateLimit =
+        lowerErr.includes('limit reached') ||
+        lowerErr.includes('429') ||
+        lowerErr.includes('too many requests') ||
+        lowerErr.includes('upgrade to pro');
 
       if (isRateLimit) {
         // Enforce 429 Too Many Requests in UI with direct Upgrade CTA
@@ -148,46 +185,56 @@ export const AiAnalystTab: React.FC<AiAnalystTabProps> = ({
 
         {/* Message Log */}
         <div className="chat-messages-log">
-          {messages.map((msg) => (
-            <div
-              key={msg.id}
-              className={`chat-message-row ${msg.role === 'user' ? 'message-user' : 'message-assistant'}`}
-            >
-              <div className="message-avatar">
-                {msg.role === 'user' ? <User size={16} /> : <Bot size={16} />}
-              </div>
+          {messages.map((msg) => {
+            const contentText =
+              typeof msg?.content === 'string'
+                ? msg.content
+                : msg?.content
+                  ? String(msg.content)
+                  : '';
+            const isUpgradePrompt =
+              contentText.toLowerCase().includes('upgrade to pro') && !!onOpenUpgrade;
 
-              <div className="message-bubble">
-                <div className="message-text">{msg.content}</div>
+            return (
+              <div
+                key={msg.id}
+                className={`chat-message-row ${msg.role === 'user' ? 'message-user' : 'message-assistant'}`}
+              >
+                <div className="message-avatar">
+                  {msg.role === 'user' ? <User size={16} /> : <Bot size={16} />}
+                </div>
 
-                {msg.insights && msg.insights.length > 0 && (
-                  <div className="message-insights-box">
-                    <div className="insights-header">
-                      <Lightbulb size={13} />
-                      <span>Key Takeaways</span>
+                <div className="message-bubble">
+                  <div className="message-text">{contentText}</div>
+
+                  {Array.isArray(msg.insights) && msg.insights.length > 0 && (
+                    <div className="message-insights-box">
+                      <div className="insights-header">
+                        <Lightbulb size={13} />
+                        <span>Key Takeaways</span>
+                      </div>
+                      <ul className="insights-list">
+                        {msg.insights.map((insight, idx) => (
+                          <li key={idx}>{insight}</li>
+                        ))}
+                      </ul>
                     </div>
-                    <ul className="insights-list">
-                      {msg.insights.map((insight, idx) => (
-                        <li key={idx}>{insight}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
+                  )}
 
-                {msg.content.includes('Upgrade to Pro') && onOpenUpgrade && (
-                  <div className="chat-upgrade-banner">
-                    <button
-                      type="button"
-                      className="btn btn-primary btn-sm btn-with-icon chat-upgrade-btn"
-                      onClick={onOpenUpgrade}
-                    >
-                      <Zap size={14} />
-                      <span>Upgrade to Pro for Unlimited Access</span>
-                    </button>
-                  </div>
-                )}
+                  {isUpgradePrompt && (
+                    <div className="chat-upgrade-banner">
+                      <button
+                        type="button"
+                        className="btn btn-primary btn-sm btn-with-icon chat-upgrade-btn"
+                        onClick={onOpenUpgrade}
+                      >
+                        <Zap size={14} />
+                        <span>Upgrade to Pro for Unlimited Access</span>
+                      </button>
+                    </div>
+                  )}
 
-                {msg.suggestedFollowUps && msg.suggestedFollowUps.length > 0 && (
+                {Array.isArray(msg.suggestedFollowUps) && msg.suggestedFollowUps.length > 0 && (
                   <div className="suggested-followups">
                     <span className="followup-label">
                       <HelpCircle size={12} /> Suggested questions:
@@ -209,7 +256,8 @@ export const AiAnalystTab: React.FC<AiAnalystTabProps> = ({
                 <div className="message-timestamp">{msg.timestamp}</div>
               </div>
             </div>
-          ))}
+          );
+        })}
 
           {isThinking && (
             <div className="chat-message-row message-assistant">

@@ -139,7 +139,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({
         });
 
         if (error) {
-          if (error.message.toLowerCase().includes('invalid login credentials')) {
+          if ((error.message || '').toLowerCase().includes('invalid login credentials')) {
             setApiError('Incorrect email or password. Please check your credentials.');
           } else {
             setApiError(error.message);

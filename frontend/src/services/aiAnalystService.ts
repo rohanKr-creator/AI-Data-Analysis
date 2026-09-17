@@ -102,7 +102,7 @@ export async function askAiAnalyst(
   // Simulate slight cognitive latency for realistic SaaS feel
   await new Promise((resolve) => setTimeout(resolve, 600));
 
-  const lower = query.toLowerCase();
+  const lower = (query || '').toLowerCase();
   const numericKeys = Object.keys(profile.numeric_summary || {});
   const quality = calculateQualityReport(profile);
 

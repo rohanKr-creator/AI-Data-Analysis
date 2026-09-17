@@ -41,9 +41,10 @@ class AnalyticsService:
         "std",
         "value_counts",
         "histogram",
+        "describe",
     }
 
-    NUMERIC_ONLY_OPERATIONS = {"mean", "sum", "median", "std", "histogram"}
+    NUMERIC_ONLY_OPERATIONS = {"mean", "sum", "median", "std", "histogram", "describe"}
 
     def _infer_type(self, series: pd.Series) -> str:
         """Infer high-level human-readable data type for a series."""
@@ -92,22 +93,37 @@ class AnalyticsService:
                 f"Supported operations are: {', '.join(sorted(self.SUPPORTED_OPERATIONS))}."
             )
 
-        # 1. Validate primary column existence
+        # 1. Validate primary column existence with case-insensitive fallback
         available_columns = list(df.columns)
         if request.column not in df.columns:
-            raise ColumnNotFoundError(
-                f"Column '{request.column}' not found in dataset. "
-                f"Available columns are: {available_columns}."
+            matched_col = next(
+                (c for c in df.columns if str(c).strip().lower() == request.column.strip().lower()),
+                None,
             )
+            if matched_col:
+                request.column = matched_col
+            else:
+                raise ColumnNotFoundError(
+                    f"Column '{request.column}' not found in dataset. "
+                    f"Available columns are: {available_columns}."
+                )
 
-        # 2. Validate group_by column existence if supplied
+        # 2. Validate group_by column existence if supplied with case-insensitive fallback
         group_by = request.group_by.strip() if request.group_by else None
         if group_by:
             if group_by not in df.columns:
-                raise ColumnNotFoundError(
-                    f"Group-by column '{request.group_by}' not found in dataset. "
-                    f"Available columns are: {available_columns}."
+                matched_grp = next(
+                    (c for c in df.columns if str(c).strip().lower() == group_by.lower()),
+                    None,
                 )
+                if matched_grp:
+                    group_by = matched_grp
+                    request.group_by = matched_grp
+                else:
+                    raise ColumnNotFoundError(
+                        f"Group-by column '{request.group_by}' not found in dataset. "
+                        f"Available columns are: {available_columns}."
+                    )
 
         # 3. Validate data type compatibility
         target_series = df[request.column]
@@ -209,6 +225,8 @@ class AnalyticsService:
                     res_series = grouped.median()
                 elif operation == "std":
                     res_series = grouped.std()
+                elif operation == "describe":
+                    res_series = grouped.mean()
                 else:
                     raise InvalidOperationError(f"Unsupported grouped operation '{operation}'.")
 
@@ -274,6 +292,20 @@ class AnalyticsService:
                             high_str = f"{int(high)}" if high.is_integer() else f"{high}"
                             bin_label = f"{low_str} - {high_str}"
                             result[bin_label] = int(counts[i])
+
+            elif operation == "describe":
+                if valid_series.empty:
+                    result = {}
+                else:
+                    std_val = valid_series.std()
+                    result = {
+                        "count": int(valid_series.count()),
+                        "mean": round(float(valid_series.mean()), 4),
+                        "std": None if pd.isna(std_val) or len(valid_series) <= 1 else round(float(std_val), 4),
+                        "min": self._clean_value(valid_series.min()),
+                        "median": round(float(valid_series.median()), 4),
+                        "max": self._clean_value(valid_series.max()),
+                    }
 
             else:
                 raise InvalidOperationError(f"Unsupported operation '{operation}'.")

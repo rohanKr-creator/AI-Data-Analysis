@@ -219,7 +219,7 @@ EMP-115,Robert Diaz,Engineering,118000,305000,4.7,2020`;
             <div>
               <strong>Upload Failed:</strong> {error}
             </div>
-            {error.includes('Upgrade to Pro') && onOpenUpgrade && (
+            {typeof error === 'string' && error.toLowerCase().includes('upgrade to pro') && onOpenUpgrade && (
               <button
                 type="button"
                 className="btn btn-primary btn-sm btn-with-icon dropzone-upgrade-btn"

@@ -9,7 +9,7 @@ interface ProfileSectionProps {
 }
 
 const getTypeIcon = (dataType: string) => {
-  const t = dataType.toLowerCase();
+  const t = (dataType || '').toLowerCase();
   if (t.includes('int') || t.includes('float') || t.includes('num')) {
     return <Hash size={12} className="type-icon" />;
   }
