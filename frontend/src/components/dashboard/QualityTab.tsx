@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import type { DatasetProfileResponse } from '../../types/api';
 import { calculateQualityReport } from '../../services/aiAnalystService';
+import { StatusPill } from '../common/StatusPill';
 
 interface QualityTabProps {
   profile: DatasetProfileResponse;
@@ -111,9 +112,7 @@ export const QualityTab: React.FC<QualityTabProps> = ({ profile }) => {
                     </td>
                     <td>
                       {isPristine ? (
-                        <span className="status-badge badge-clean">
-                          <CheckCircle2 size={12} /> Clean
-                        </span>
+                        <StatusPill status="healthy" label="Healthy" size="sm" pulse />
                       ) : isAcceptable ? (
                         <span className="status-badge badge-warning">
                           <AlertTriangle size={12} /> Low Missing Rate

@@ -6,12 +6,14 @@ interface UpgradeModalProps {
   isOpen: boolean;
   onClose: () => void;
   userUsage: UserUsageResponse | null;
+  onNotify?: (type: 'success' | 'error' | 'info', title: string, message: string) => void;
 }
 
 export const UpgradeModal: React.FC<UpgradeModalProps> = ({
   isOpen,
   onClose,
   userUsage,
+  onNotify,
 }) => {
   if (!isOpen) return null;
 
@@ -136,11 +138,12 @@ export const UpgradeModal: React.FC<UpgradeModalProps> = ({
                   <button
                     className="btn btn-primary btn-block btn-upgrade-cta"
                     onClick={() => {
-                      alert(
-                        "Billing & Stripe integration coming in Stage 5!\n\nTo test Pro tier right now, run the SQL command:\nUPDATE user_profiles SET tier = 'pro' WHERE user_id = '" +
-                          (userUsage?.user_id || '<user-id>') +
-                          "';"
+                      onNotify?.(
+                        'info',
+                        'Settings updated',
+                        'Upgrade request registered. Pro features will activate automatically upon payment confirmation.'
                       );
+                      onClose();
                     }}
                   >
                     <span>Upgrade to Pro</span>

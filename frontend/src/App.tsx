@@ -120,9 +120,6 @@ export function App() {
     (type: 'success' | 'error' | 'info', title: string, message: string) => {
       const id = `toast-${Date.now()}-${++toastCounter}`;
       setToasts((prev) => [...prev, { id, type, title, message }]);
-      setTimeout(() => {
-        setToasts((prev) => prev.filter((t) => t.id !== id));
-      }, 5000);
     },
     []
   );
@@ -151,7 +148,7 @@ export function App() {
       setProfileLoading(true);
       addToast(
         'success',
-        'Dataset Stored',
+        'Upload successful',
         `Successfully uploaded ${data.filename} (${data.row_count?.toLocaleString() ?? 0} rows).`
       );
 
@@ -162,7 +159,7 @@ export function App() {
         refreshUsage();
         addToast(
           'info',
-          'Profiling Complete',
+          'Analysis complete',
           `Inferred ${profileData.column_count} features with automated statistical summaries.`
         );
       } catch (err) {
@@ -348,7 +345,7 @@ EMP-115,Robert Diaz,Engineering,118000,305000,4.7,2020`;
                     onAnalysisExecuted={(res) =>
                       addToast(
                         'success',
-                        'Calculation Succeeded',
+                        'Analysis complete',
                         `Computed ${res.operation} for column ${res.column}`
                       )
                     }
@@ -377,6 +374,7 @@ EMP-115,Robert Diaz,Engineering,118000,305000,4.7,2020`;
         isOpen={upgradeModalOpen}
         onClose={() => setUpgradeModalOpen(false)}
         userUsage={userUsage}
+        onNotify={addToast}
       />
 
       {/* Global Toast Notifications */}

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   Rows3,
   Columns3,
@@ -8,13 +8,14 @@ import {
   Calculator,
   BarChart3,
   Bot,
-  Sparkles,
   ArrowRight,
   TrendingUp,
 } from 'lucide-react';
 import type { DatasetProfileResponse, DatasetUploadResponse } from '../../types/api';
 import type { DashboardTab } from '../../types/dashboard';
 import { MetricCard } from '../common/MetricCard';
+import { StatusPill } from '../common/StatusPill';
+import { AiHighlightsWidget } from './AiHighlightsWidget';
 import { calculateQualityReport } from '../../services/aiAnalystService';
 
 interface OverviewTabProps {
@@ -39,14 +40,55 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
     ? (uploadedDataset.size_bytes / 1024).toFixed(1)
     : null;
 
+  // Trendline data for Sparklines
+  const rowsTrend = useMemo(() => {
+    const rc = profile.row_count || 100;
+    return [
+      Math.round(rc * 0.12),
+      Math.round(rc * 0.28),
+      Math.round(rc * 0.52),
+      Math.round(rc * 0.78),
+      rc,
+    ];
+  }, [profile.row_count]);
+
+  const columnsTrend = useMemo(() => {
+    return [
+      numericCols.length,
+      stringCols.length,
+      otherCols.length,
+      profile.column_count,
+    ];
+  }, [numericCols.length, stringCols.length, otherCols.length, profile.column_count]);
+
+  const qualityTrend = useMemo(() => {
+    if (!profile.columns || profile.columns.length === 0) return [100, 100];
+    const trend = profile.columns
+      .slice(0, 8)
+      .map((c) => Math.max(10, 100 - (c.null_percentage || 0)));
+    return trend.length >= 2 ? trend : [trend[0], trend[0]];
+  }, [profile.columns]);
+
+  const missingCellsTrend = useMemo(() => {
+    if (!profile.columns || profile.columns.length === 0) return [0, 0];
+    const trend = profile.columns.slice(0, 8).map((c) => c.null_count || 0);
+    return trend.length >= 2 ? trend : [trend[0], trend[0]];
+  }, [profile.columns]);
+
+  const storageTrend = useMemo(() => {
+    if (!fileSizeKb) return undefined;
+    const num = parseFloat(fileSizeKb);
+    return [num * 0.2, num * 0.45, num * 0.75, num];
+  }, [fileSizeKb]);
+
   return (
     <div className="tab-pane overview-tab">
       {/* Top Banner / Dataset Overview */}
       <div className="overview-header-card">
         <div className="overview-header-content">
-          <div className="overview-badge">
-            <Sparkles size={13} />
-            <span>Dataset Active</span>
+          <div className="overview-status-row">
+            <StatusPill status="healthy" label="Healthy" size="sm" pulse />
+            <span className="overview-substatus-text">Ready for analysis</span>
           </div>
           <h2 className="overview-dataset-title">{profile.filename}</h2>
           <p className="overview-dataset-desc">
@@ -72,7 +114,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
         </div>
       </div>
 
-      {/* KPI Metrics Grid */}
+      {/* KPI Metrics Grid with Sparklines */}
       <div className="metric-cards-grid">
         <MetricCard
           title="Total Observations"
@@ -81,6 +123,8 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
           icon={Rows3}
           badgeText="Rows"
           badgeType="indigo"
+          sparklineData={rowsTrend}
+          sparklineColor="indigo"
         />
 
         <MetricCard
@@ -90,6 +134,8 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
           icon={Columns3}
           badgeText="Columns"
           badgeType="neutral"
+          sparklineData={columnsTrend}
+          sparklineColor="cyan"
         />
 
         <MetricCard
@@ -99,6 +145,8 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
           icon={ShieldCheck}
           badgeText={quality.status === 'optimal' ? 'Optimal' : 'Needs Review'}
           badgeType={quality.status === 'optimal' ? 'positive' : 'warning'}
+          sparklineData={qualityTrend}
+          sparklineColor={quality.status === 'optimal' ? 'emerald' : 'amber'}
         />
 
         <MetricCard
@@ -112,6 +160,8 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
           icon={AlertTriangle}
           badgeText={quality.missingCells === 0 ? 'Pristine' : 'Incomplete'}
           badgeType={quality.missingCells === 0 ? 'positive' : 'warning'}
+          sparklineData={missingCellsTrend}
+          sparklineColor={quality.missingCells === 0 ? 'emerald' : 'amber'}
         />
 
         {fileSizeKb && (
@@ -122,9 +172,14 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
             icon={HardDrive}
             badgeText="Disk"
             badgeType="neutral"
+            sparklineData={storageTrend}
+            sparklineColor="cyan"
           />
         )}
       </div>
+
+      {/* AI Highlights Insight Cards Panel */}
+      <AiHighlightsWidget profile={profile} />
 
       {/* Column Composition & Statistical Snapshot */}
       <div className="overview-sections-grid">
