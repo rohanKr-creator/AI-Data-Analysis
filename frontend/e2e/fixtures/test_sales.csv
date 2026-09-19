@@ -1,0 +1,8 @@
+employee_id,name,department,salary,sales_amount,customer_rating,hire_year
+EMP-101,Alice Johnson,Engineering,115000,280000,4.8,2020
+EMP-102,Marcus Chen,Engineering,125000,340000,4.9,2019
+EMP-103,Sarah Miller,Sales,92000,520000,4.6,2021
+EMP-104,David Kim,Marketing,78000,190000,4.2,2022
+EMP-105,Elena Rostova,Product,105000,410000,4.7,2020
+EMP-106,James Wilson,Sales,95000,490000,4.5,2021
+EMP-107,Priya Patel,Engineering,118000,310000,4.8,2021
