@@ -335,3 +335,133 @@ def test_list_user_datasets_returns_only_owned_datasets(client: TestClient):
     finally:
         app.dependency_overrides.pop(get_current_user, None)
 
+
+def _create_excel_bytes(data: dict, sheet_name: str = "Sheet1") -> bytes:
+    """Helper to generate in-memory Excel (.xlsx) file bytes."""
+    import pandas as pd
+    df = pd.DataFrame(data)
+    buf = io.BytesIO()
+    with pd.ExcelWriter(buf, engine="openpyxl") as writer:
+        df.to_excel(writer, sheet_name=sheet_name, index=False)
+    buf.seek(0)
+    return buf.getvalue()
+
+
+def test_upload_valid_xlsx(client: TestClient, db_session: Session):
+    """Test successful upload of a well-formed .xlsx Excel file."""
+    excel_bytes = _create_excel_bytes({
+        "product": ["Alpha", "Beta", "Gamma"],
+        "price": [10.5, 20.0, 35.75],
+        "in_stock": [True, False, True],
+    })
+    files = {
+        "file": (
+            "products.xlsx",
+            io.BytesIO(excel_bytes),
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+    }
+
+    response = client.post("/api/v1/datasets/upload", files=files)
+    assert response.status_code == 201
+
+    data = response.json()
+    assert "dataset_id" in data
+    assert data["filename"] == "products.xlsx"
+    assert data["size_bytes"] == len(excel_bytes)
+    assert data["row_count"] == 3
+    assert data["column_count"] == 3
+
+    # Check database record
+    record = db_session.query(Dataset).filter(Dataset.id == uuid.UUID(data["dataset_id"])).first()
+    assert record is not None
+    assert record.original_filename == "products.xlsx"
+    assert record.filename == f"{data['dataset_id']}_products.xlsx"
+
+
+def test_upload_multisheet_xlsx(client: TestClient):
+    """Test that multi-sheet .xlsx defaults to reading the first sheet (sheet_name=0)."""
+    import pandas as pd
+    buf = io.BytesIO()
+    with pd.ExcelWriter(buf, engine="openpyxl") as writer:
+        pd.DataFrame({"primary_col": [1, 2, 3]}).to_excel(writer, sheet_name="FirstSheet", index=False)
+        pd.DataFrame({"secondary_col": [10, 20, 30, 40, 50]}).to_excel(writer, sheet_name="SecondSheet", index=False)
+    excel_bytes = buf.getvalue()
+
+    files = {
+        "file": (
+            "multisheet.xlsx",
+            io.BytesIO(excel_bytes),
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+    }
+
+    response = client.post("/api/v1/datasets/upload", files=files)
+    assert response.status_code == 201
+    data = response.json()
+    assert data["row_count"] == 3  # 3 rows from FirstSheet, NOT 5 from SecondSheet
+    assert data["column_count"] == 1
+
+    # Verify profiling also reads first sheet
+    profile_res = client.get(f"/api/v1/datasets/{data['dataset_id']}/profile")
+    assert profile_res.status_code == 200
+    profile = profile_res.json()
+    assert profile["columns"][0]["name"] == "primary_col"
+
+
+def test_upload_xlsx_with_nulls_and_empty_cells(client: TestClient):
+    """Test that Excel files with empty strings and standard null representations parse correctly."""
+    excel_bytes = _create_excel_bytes({
+        "item": ["A", "", "C", "D"],
+        "cost": [10.0, None, 30.0, 40.0],
+    })
+    files = {
+        "file": (
+            "nulls.xlsx",
+            io.BytesIO(excel_bytes),
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+    }
+
+    response = client.post("/api/v1/datasets/upload", files=files)
+    assert response.status_code == 201
+
+    dataset_id = response.json()["dataset_id"]
+    profile_res = client.get(f"/api/v1/datasets/{dataset_id}/profile")
+    assert profile_res.status_code == 200
+    profile = profile_res.json()
+    # item has empty string which is normalized to NaN -> null_count should be 1
+    item_col = next(c for c in profile["columns"] if c["name"] == "item")
+    assert item_col["null_count"] == 1
+
+
+def test_upload_corrupted_xlsx(client: TestClient):
+    """Test that uploading corrupted .xlsx bytes is rejected with 400."""
+    fake_bytes = b"PK\x03\x04corrupted-excel-content-garbage-data"
+    files = {
+        "file": (
+            "corrupted.xlsx",
+            io.BytesIO(fake_bytes),
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+    }
+
+    response = client.post("/api/v1/datasets/upload", files=files)
+    assert response.status_code == 400
+    assert "could not be parsed" in response.json()["detail"].lower()
+
+
+def test_upload_empty_xlsx(client: TestClient):
+    """Test that uploading an empty 0-byte .xlsx is rejected with 400."""
+    files = {
+        "file": (
+            "empty.xlsx",
+            io.BytesIO(b""),
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+    }
+
+    response = client.post("/api/v1/datasets/upload", files=files)
+    assert response.status_code == 400
+    assert "empty" in response.json()["detail"].lower()
+

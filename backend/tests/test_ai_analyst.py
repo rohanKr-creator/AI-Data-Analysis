@@ -412,3 +412,57 @@ def test_ask_case_insensitive_column_and_fallback(client: TestClient):
     assert data["result"]["count"] == 5
 
 
+def test_ask_question_xlsx_dataset(client: TestClient):
+    """Test AI analyst question answering on an uploaded .xlsx dataset."""
+    import pandas as pd
+    excel_buf = io.BytesIO()
+    df = pd.DataFrame({
+        "employee": ["Alice", "Bob", "Charlie"],
+        "salary": [60000, 80000, 100000],
+    })
+    with pd.ExcelWriter(excel_buf, engine="openpyxl") as writer:
+        df.to_excel(writer, sheet_name="Sheet1", index=False)
+    excel_buf.seek(0)
+
+    files = {
+        "file": (
+            "payroll.xlsx",
+            excel_buf,
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+    }
+    upload_res = client.post("/api/v1/datasets/upload", files=files)
+    assert upload_res.status_code == 201
+    dataset_id = upload_res.json()["dataset_id"]
+
+    mock_intent_res = MagicMock()
+    mock_intent_res.text = json.dumps({
+        "can_answer": True,
+        "operation": "mean",
+        "column": "salary",
+        "group_by": None,
+        "reason": "User is asking for the average salary.",
+    })
+
+    mock_explain_res = MagicMock()
+    mock_explain_res.text = "The average salary across employees in payroll.xlsx is $80,000."
+
+    mock_client = MagicMock()
+    mock_client.models.generate_content.side_effect = [
+        mock_intent_res,
+        mock_explain_res,
+    ]
+
+    with patch("app.services.ai_analyst_service.ai_analyst_service.get_client", return_value=mock_client):
+        payload = {"question": "What is the average salary in payroll.xlsx?"}
+        response = client.post(f"/api/v1/datasets/{dataset_id}/ask", json=payload)
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["can_answer"] is True
+    assert data["operation_used"] == "mean"
+    assert data["result"] == 80000.0
+    assert "80,000" in data["answer"]
+
+
+

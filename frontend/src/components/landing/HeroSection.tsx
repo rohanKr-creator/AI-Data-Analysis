@@ -14,7 +14,7 @@ export const HeroSection: React.FC = () => {
       </h1>
 
       <p className="hero-description">
-        Upload any CSV dataset to instantly generate deep statistical profiles, run
+        Upload any CSV or Excel dataset to instantly generate deep statistical profiles, run
         deterministic aggregate calculations, explore interactive charts, and query your data
         with an AI analyst.
       </p>

@@ -17,6 +17,7 @@ from app.services.analytics_service import (
     analytics_service,
 )
 from app.services.dataset_service import DatasetNotFoundError, dataset_service
+from app.services.file_validator import read_file_to_dataframe
 from app.services.profiling_service import profiling_service
 from app.services.storage_service import storage_service, StorageFileNotFoundError
 
@@ -241,9 +242,9 @@ Rules:
         ]
         if any(t in q for t in triggers):
             return True
-        if q.startswith("summarize") and ("dataset" in q or "data" in q or "file" in q or "csv" in q):
+        if q.startswith("summarize") and ("dataset" in q or "data" in q or "file" in q or "csv" in q or "excel" in q or "sheet" in q or "xlsx" in q or "xls" in q):
             return True
-        if "summary of" in q and ("dataset" in q or "data" in q or "file" in q or ".csv" in q):
+        if "summary of" in q and ("dataset" in q or "data" in q or "file" in q or ".csv" in q or ".xlsx" in q or ".xls" in q or "excel" in q or "sheet" in q):
             return True
         return False
 
@@ -528,7 +529,11 @@ Requirements:
         6. Generate natural language explanation
         """
         # Support flexible argument ordering
-        if question is None and isinstance(file_path, str) and not file_path.endswith(".csv"):
+        is_dataset_file = any(
+            str(file_path).lower().endswith(ext)
+            for ext in [".csv", ".xlsx", ".xls"]
+        )
+        if question is None and isinstance(file_path, str) and not is_dataset_file:
             question = file_path
             file_path = None
 
@@ -539,13 +544,14 @@ Requirements:
             )
 
         if file_path is not None and isinstance(file_path, Path) and file_path.is_file():
-            df = pd.read_csv(file_path)
+            df = read_file_to_dataframe(file_path, filename=file_path.name)
         else:
             if isinstance(file_path, str) and not storage_path:
                 storage_path = file_path
 
+            resolved_name = None
             if not storage_path:
-                resolved_path, _ = dataset_service.get_dataset_file(dataset_id)
+                resolved_path, resolved_name = dataset_service.get_dataset_file(dataset_id)
                 storage_path = resolved_path
 
             try:
@@ -553,7 +559,7 @@ Requirements:
             except StorageFileNotFoundError as err:
                 raise DatasetNotFoundError(str(err)) from err
 
-            df = pd.read_csv(io.BytesIO(file_bytes))
+            df = read_file_to_dataframe(file_bytes, filename=resolved_name or storage_path)
 
         # SPECIAL-CASE HANDLING: Executive Summary & Data Quality bypass single-operation flow
         if self.is_executive_summary_question(question):

@@ -10,6 +10,7 @@ from app.services.file_validator import (
     validate_file_metadata,
     read_and_validate_stream,
     sanitize_filename,
+    read_file_to_dataframe,
     InvalidFileFormatError,
     EmptyFileError,
     DatasetValidationError,
@@ -37,6 +38,7 @@ class DatasetService:
         """
         Validate file metadata, stream into memory while enforcing size limits,
         compute row and column counts using Pandas in memory, and upload to Supabase Storage.
+        Supports both CSV and Excel (.xlsx, .xls) files.
         
         Args:
             file_stream: Binary IO stream from UploadFile.
@@ -55,18 +57,29 @@ class DatasetService:
             max_size_bytes=settings.MAX_UPLOAD_SIZE_BYTES,
         )
 
-        # Step 3: Verify CSV readability and compute row and column counts in memory
+        # Step 3: Verify dataset readability and compute row and column counts in memory
         try:
-            df = pd.read_csv(io.BytesIO(file_bytes))
+            df = read_file_to_dataframe(file_bytes, filename=clean_filename)
             row_count = int(df.shape[0])
             column_count = int(df.shape[1])
+        except (InvalidFileFormatError, EmptyFileError):
+            raise
         except Exception as err:
             raise InvalidFileFormatError(
-                f"File could not be parsed as a valid CSV dataset: {str(err)}"
+                f"File could not be parsed as a valid dataset: {str(err)}"
             )
 
         if row_count == 0:
-            raise EmptyFileError("CSV file contains no data rows.")
+            raise EmptyFileError("Dataset file contains no data rows.")
+
+        # Determine appropriate content type
+        ext = Path(clean_filename).suffix.lower()
+        default_mime = "text/csv"
+        if ext == ".xlsx":
+            default_mime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        elif ext == ".xls":
+            default_mime = "application/vnd.ms-excel"
+        resolved_content_type = content_type or default_mime
 
         # Step 4: Generate unique target destination key and upload to Supabase Storage
         dataset_id = str(uuid.uuid4())
@@ -75,17 +88,17 @@ class DatasetService:
         storage_service.upload_file(
             file_bytes=file_bytes,
             filename=destination_filename,
-            content_type=content_type or "text/csv",
+            content_type=resolved_content_type,
         )
 
         return DatasetUploadResponse(
             dataset_id=dataset_id,
             filename=clean_filename,
             size_bytes=len(file_bytes),
-            content_type=content_type or "text/csv",
+            content_type=resolved_content_type,
             row_count=row_count,
             column_count=column_count,
-            message="CSV dataset uploaded and validated successfully.",
+            message="Dataset uploaded and validated successfully.",
         )
 
     def get_dataset_file(

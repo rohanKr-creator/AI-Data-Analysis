@@ -26,7 +26,7 @@ export const UploadSection: React.FC<UploadSectionProps> = ({
   const handleUpload = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedFile) {
-      setError('Please select a CSV file to upload.');
+      setError('Please select a CSV or Excel file to upload.');
       return;
     }
 
@@ -50,11 +50,11 @@ export const UploadSection: React.FC<UploadSectionProps> = ({
         1. Upload Dataset
       </h2>
       <form onSubmit={handleUpload} className="upload-form">
-        <label htmlFor="csv-file-input">Select CSV File:</label>
+        <label htmlFor="dataset-file-input">Select CSV or Excel File:</label>
         <input
-          id="csv-file-input"
+          id="dataset-file-input"
           type="file"
-          accept=".csv,text/csv"
+          accept=".csv,text/csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.xls,application/vnd.ms-excel"
           onChange={handleFileChange}
           disabled={loading}
         />
@@ -65,7 +65,7 @@ export const UploadSection: React.FC<UploadSectionProps> = ({
           className="btn-with-icon"
         >
           <UploadCloud size={15} />
-          {loading ? 'Uploading...' : 'Upload CSV'}
+          {loading ? 'Uploading...' : 'Upload Dataset'}
         </button>
       </form>
 

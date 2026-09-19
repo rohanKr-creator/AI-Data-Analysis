@@ -149,7 +149,7 @@ export const QualityTab: React.FC<QualityTabProps> = ({ profile }) => {
           )}
           <li>
             <FileCheck2 size={15} className="text-indigo" />
-            <span>Schema integrity: all {profile.column_count} column types were successfully validated against standard RFC-4180 CSV specification.</span>
+            <span>Schema integrity: all {profile.column_count} column types were successfully validated against dataset specifications.</span>
           </li>
         </ul>
       </div>

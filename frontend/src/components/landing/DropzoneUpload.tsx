@@ -30,8 +30,20 @@ export const DropzoneUpload: React.FC<DropzoneUploadProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const processUpload = useCallback(async (file: File) => {
-    if (!file.name.endsWith('.csv') && file.type !== 'text/csv') {
-      const err = 'Only CSV files (.csv) are currently supported.';
+    const fileName = file.name.toLowerCase();
+    const isCsv = fileName.endsWith('.csv') || file.type === 'text/csv' || file.type === 'application/csv';
+    const isExcel =
+      fileName.endsWith('.xlsx') ||
+      fileName.endsWith('.xls') ||
+      file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+      file.type === 'application/vnd.ms-excel' ||
+      file.type === 'application/wps-office.xlsx';
+    const isAllowedFallback =
+      file.type === 'application/octet-stream' &&
+      (fileName.endsWith('.csv') || fileName.endsWith('.xlsx') || fileName.endsWith('.xls'));
+
+    if (!isCsv && !isExcel && !isAllowedFallback) {
+      const err = 'Only CSV and Excel files (.csv, .xlsx, .xls) are currently supported.';
       setError(err);
       onUploadError?.(err);
       return;
@@ -142,7 +154,7 @@ EMP-115,Robert Diaz,Engineering,118000,305000,4.7,2020`;
         <input
           ref={fileInputRef}
           type="file"
-          accept=".csv,text/csv"
+          accept=".csv,text/csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.xls,application/vnd.ms-excel"
           onChange={handleFileChange}
           style={{ display: 'none' }}
           disabled={isUploading}
@@ -160,7 +172,7 @@ EMP-115,Robert Diaz,Engineering,118000,305000,4.7,2020`;
           <h2 className="dropzone-title">
             {isUploading
               ? `Processing ${selectedFile?.name}...`
-              : 'Drop your CSV file here, or browse files'}
+              : 'Drop your CSV or Excel file here, or browse files'}
           </h2>
 
           <p className="dropzone-subtitle">
@@ -178,7 +190,7 @@ EMP-115,Robert Diaz,Engineering,118000,305000,4.7,2020`;
                 }}
               >
                 <FileText size={16} />
-                <span>Select CSV File</span>
+                <span>Select CSV or Excel File</span>
               </button>
 
               <button
@@ -235,7 +247,7 @@ EMP-115,Robert Diaz,Engineering,118000,305000,4.7,2020`;
 
       <div className="dropzone-footer-specs">
         <span className="spec-badge">
-          <AlertCircle size={12} /> RFC 4180 CSV standard
+          <AlertCircle size={12} /> CSV & Excel (.xlsx, .xls) supported
         </span>
         <span className="spec-badge">UTF-8 encoding</span>
         <span className="spec-badge">Auto type inference (int, float, bool, date)</span>

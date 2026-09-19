@@ -9,6 +9,7 @@ from app.schemas.dataset import (
     NumericColumnStats,
 )
 from app.services.dataset_service import dataset_service, DatasetNotFoundError
+from app.services.file_validator import read_file_to_dataframe
 from app.services.storage_service import storage_service, StorageFileNotFoundError
 
 
@@ -92,7 +93,7 @@ class ProfilingService:
             or (isinstance(file_path, str) and Path(file_path).is_file())
         ):
             file_p = Path(file_path)
-            df = pd.read_csv(file_p)
+            df = read_file_to_dataframe(file_p, filename=file_p.name)
             original_filename = original_filename or file_p.name
         else:
             # If file_path was passed as a string storage path
@@ -109,7 +110,7 @@ class ProfilingService:
             except StorageFileNotFoundError as err:
                 raise DatasetNotFoundError(str(err)) from err
 
-            df = pd.read_csv(io.BytesIO(file_bytes))
+            df = read_file_to_dataframe(file_bytes, filename=original_filename or storage_path)
 
         row_count = int(len(df))
         column_count = int(len(df.columns))

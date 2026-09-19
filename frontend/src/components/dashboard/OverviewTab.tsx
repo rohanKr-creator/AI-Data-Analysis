@@ -118,7 +118,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
           <MetricCard
             title="Storage Footprint"
             value={`${fileSizeKb} KB`}
-            subtitle="Raw CSV file size"
+            subtitle="Raw dataset file size"
             icon={HardDrive}
             badgeText="Disk"
             badgeType="neutral"

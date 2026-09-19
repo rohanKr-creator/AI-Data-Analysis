@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 from app.schemas.analytics import AnalyticsRequest, AnalyticsResponse
 from app.services.dataset_service import DatasetNotFoundError, dataset_service
+from app.services.file_validator import read_file_to_dataframe
 from app.services.storage_service import storage_service, StorageFileNotFoundError
 
 
@@ -170,13 +171,14 @@ class AnalyticsService:
             raise AnalyticsValidationError("Analytics request payload is required.")
 
         if file_path is not None and isinstance(file_path, Path) and file_path.is_file():
-            df = pd.read_csv(file_path)
+            df = read_file_to_dataframe(file_path, filename=file_path.name)
         else:
             if isinstance(file_path, str) and not storage_path:
                 storage_path = file_path
 
+            resolved_name = None
             if not storage_path:
-                resolved_path, _ = dataset_service.get_dataset_file(dataset_id)
+                resolved_path, resolved_name = dataset_service.get_dataset_file(dataset_id)
                 storage_path = resolved_path
 
             try:
@@ -184,7 +186,7 @@ class AnalyticsService:
             except StorageFileNotFoundError as err:
                 raise DatasetNotFoundError(str(err)) from err
 
-            df = pd.read_csv(io.BytesIO(file_bytes))
+            df = read_file_to_dataframe(file_bytes, filename=resolved_name or storage_path)
 
         # Validate inputs against loaded data
         operation, column, group_by = self.validate_request(df, request)

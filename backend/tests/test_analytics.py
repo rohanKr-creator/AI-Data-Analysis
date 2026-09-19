@@ -291,3 +291,47 @@ def test_enterprise_staff_dataset_aggregation(client: TestClient):
     assert sum(res_data.values()) == 1495000
 
 
+def test_xlsx_dataset_analytics(client: TestClient):
+    """Test full analytics operations (mean, sum, group_by) on an uploaded .xlsx dataset."""
+    import pandas as pd
+    excel_buf = io.BytesIO()
+    df = pd.DataFrame({
+        "department": ["Engineering", "Engineering", "Sales", "Sales"],
+        "revenue": [1000.0, 2000.0, 3000.0, 4000.0],
+    })
+    with pd.ExcelWriter(excel_buf, engine="openpyxl") as writer:
+        df.to_excel(writer, sheet_name="Finances", index=False)
+    excel_buf.seek(0)
+
+    files = {
+        "file": (
+            "finances.xlsx",
+            excel_buf,
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+    }
+    upload_res = client.post("/api/v1/datasets/upload", files=files)
+    assert upload_res.status_code == 201
+    dataset_id = upload_res.json()["dataset_id"]
+
+    # Compute overall mean
+    mean_res = client.post(
+        f"/api/v1/datasets/{dataset_id}/analyze",
+        json={"column": "revenue", "operation": "mean"},
+    )
+    assert mean_res.status_code == 200
+    assert mean_res.json()["result"] == 2500.0
+
+    # Compute group_by sum
+    group_res = client.post(
+        f"/api/v1/datasets/{dataset_id}/analyze",
+        json={"column": "revenue", "operation": "sum", "group_by": "department"},
+    )
+    assert group_res.status_code == 200
+    assert group_res.json()["result"] == {
+        "Engineering": 3000.0,
+        "Sales": 7000.0,
+    }
+
+
+

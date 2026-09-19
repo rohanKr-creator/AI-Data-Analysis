@@ -356,7 +356,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                     {mode === 'login'
                       ? 'Enter your credentials to access your data intelligence workspace.'
                       : mode === 'signup'
-                      ? 'Upload CSVs, explore automated profiling, and unlock instant AI insights.'
+                      ? 'Upload CSV or Excel files, explore automated profiling, and unlock instant AI insights.'
                       : 'Enter your email address and we will send you a link to reset your password.'}
                   </p>
                 </div>
@@ -587,7 +587,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({
             </h2>
 
             <p className="auth-brand-hero-desc">
-              Upload any CSV dataset to instantly generate deep statistical profiles, run
+              Upload any CSV or Excel dataset to instantly generate deep statistical profiles, run
               deterministic aggregate calculations, explore interactive charts, and query your
               data with an AI analyst.
             </p>

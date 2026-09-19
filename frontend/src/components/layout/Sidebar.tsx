@@ -194,7 +194,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div className="sidebar-footer">
           <button className="sidebar-upload-btn" onClick={onNewUpload}>
             <UploadCloud size={16} />
-            <span>Upload New CSV</span>
+            <span>Upload New Dataset</span>
           </button>
           <div className="sidebar-meta">
             <FileCode2 size={13} />
