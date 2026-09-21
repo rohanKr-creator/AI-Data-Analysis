@@ -108,18 +108,30 @@ export function App() {
     const target = mode === 'signup' ? '/signup' : '/login';
     window.history.pushState({}, '', target);
     setAuthMode(mode);
+    setToasts([]); // Clear old toasts when switching to auth/profile view
     setCurrentView('auth');
   }, []);
 
   const handleBackToWorkspace = useCallback(() => {
     window.history.pushState({}, '', '/');
+    setToasts([]); // Clear old toasts when returning to workspace
     setCurrentView('dashboard');
   }, []);
 
   const addToast = useCallback(
     (type: 'success' | 'error' | 'info', title: string, message: string) => {
-      const id = `toast-${Date.now()}-${++toastCounter}`;
-      setToasts((prev) => [...prev, { id, type, title, message }]);
+      setToasts((prev) => {
+        // Prevent duplicate toast if identical title and message is already active
+        const isDuplicate = prev.some(
+          (t) => t.title === title && t.message === message
+        );
+        if (isDuplicate) return prev;
+
+        const id = `toast-${Date.now()}-${++toastCounter}`;
+        const next = [...prev, { id, type, title, message }];
+        // Limit to max 3 visible toasts simultaneously to prevent screen flooding
+        return next.length > 3 ? next.slice(next.length - 3) : next;
+      });
     },
     []
   );
@@ -347,6 +359,8 @@ EMP-115,Robert Diaz,Engineering,118000,305000,4.7,2020`;
             onNewUpload={handleNewUpload}
             userUsage={userUsage}
             onOpenUpgrade={() => setUpgradeModalOpen(true)}
+            currentUser={currentUser}
+            onOpenAuth={() => navigateToAuth('login')}
           />
 
           <main className="dashboard-content-area">

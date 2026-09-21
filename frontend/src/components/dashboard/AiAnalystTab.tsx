@@ -8,6 +8,9 @@ import {
   Lightbulb,
   CornerDownLeft,
   Zap,
+  TrendingUp,
+  BarChart2,
+  ShieldCheck,
 } from 'lucide-react';
 import type { DatasetProfileResponse } from '../../types/api';
 import type { AiChatMessage } from '../../types/dashboard';
@@ -23,6 +26,20 @@ interface AiAnalystTabProps {
   onQuestionAsked?: () => void;
   onOpenUpgrade?: () => void;
 }
+
+const getSuggestionIcon = (query: string) => {
+  const q = query.toLowerCase();
+  if (q.includes('quality') || q.includes('missing') || q.includes('clean') || q.includes('anomal')) {
+    return <ShieldCheck size={13} className="chip-icon icon-emerald" />;
+  }
+  if (q.includes('trend') || q.includes('growth') || q.includes('distribution') || q.includes('spread')) {
+    return <TrendingUp size={13} className="chip-icon icon-indigo" />;
+  }
+  if (q.includes('bar') || q.includes('chart') || q.includes('correlat') || q.includes('compare')) {
+    return <BarChart2 size={13} className="chip-icon icon-blue" />;
+  }
+  return <Sparkles size={13} className="chip-icon icon-purple" />;
+};
 
 export const AiAnalystTab: React.FC<AiAnalystTabProps> = ({
   profile,
@@ -170,7 +187,7 @@ export const AiAnalystTab: React.FC<AiAnalystTabProps> = ({
         <div className="chat-header">
           <div className="chat-header-info">
             <div className="ai-avatar-ring">
-              <Bot size={20} className="ai-avatar-icon" />
+              <Bot size={18} className="ai-avatar-icon" />
             </div>
             <div>
               <h3 className="chat-title">
@@ -198,10 +215,12 @@ export const AiAnalystTab: React.FC<AiAnalystTabProps> = ({
             return (
               <div
                 key={msg.id}
-                className={`chat-message-row ${msg.role === 'user' ? 'message-user' : 'message-assistant'}`}
+                className={`chat-message-row ${
+                  msg.role === 'user' ? 'message-user' : 'message-assistant'
+                }`}
               >
                 <div className="message-avatar">
-                  {msg.role === 'user' ? <User size={16} /> : <Bot size={16} />}
+                  {msg.role === 'user' ? <User size={15} /> : <Bot size={15} />}
                 </div>
 
                 <div className="message-bubble">
@@ -234,35 +253,39 @@ export const AiAnalystTab: React.FC<AiAnalystTabProps> = ({
                     </div>
                   )}
 
-                {Array.isArray(msg.suggestedFollowUps) && msg.suggestedFollowUps.length > 0 && (
-                  <div className="suggested-followups">
-                    <span className="followup-label">
-                      <HelpCircle size={12} /> Suggested questions:
-                    </span>
-                    <div className="followup-chips">
-                      {msg.suggestedFollowUps.map((q, idx) => (
-                        <button
-                          key={idx}
-                          className="chip-btn"
-                          onClick={() => handleSendMessage(q)}
-                        >
-                          {q}
-                        </button>
-                      ))}
+                  {Array.isArray(msg.suggestedFollowUps) && msg.suggestedFollowUps.length > 0 && (
+                    <div className="suggested-followups">
+                      <span className="followup-label">
+                        <HelpCircle size={12} /> Suggested questions:
+                      </span>
+                      <div className="followup-chips">
+                        {msg.suggestedFollowUps.map((q, idx) => (
+                          <button
+                            key={idx}
+                            className="chip-btn"
+                            onClick={() => handleSendMessage(q)}
+                            type="button"
+                          >
+                            {getSuggestionIcon(q)}
+                            <span>{q}</span>
+                          </button>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
 
-                <div className="message-timestamp">{msg.timestamp}</div>
+                  <div className="message-meta-footer">
+                    <span className="message-timestamp">{msg.timestamp}</span>
+                  </div>
+                </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })}
 
           {isThinking && (
-            <div className="chat-message-row message-assistant">
+            <div className="chat-message-row message-assistant message-thinking-row">
               <div className="message-avatar">
-                <Bot size={16} />
+                <Bot size={15} />
               </div>
               <div className="message-bubble thinking-bubble">
                 <div className="typing-dots">
@@ -270,7 +293,7 @@ export const AiAnalystTab: React.FC<AiAnalystTabProps> = ({
                   <span />
                   <span />
                 </div>
-                <span className="thinking-text">Analyzing dataset structure...</span>
+                <span className="thinking-text">Analyzing dataset structure & computing statistics...</span>
               </div>
             </div>
           )}
@@ -291,12 +314,14 @@ export const AiAnalystTab: React.FC<AiAnalystTabProps> = ({
               className="chat-input"
             />
             <button
+              type="button"
               onClick={() => handleSendMessage()}
               disabled={isThinking || !inputQuery.trim()}
               className="chat-send-btn"
               aria-label="Send message"
+              title={inputQuery.trim() ? 'Send message (Enter)' : 'Type a question first'}
             >
-              <Send size={16} />
+              <Send size={15} />
             </button>
           </div>
           <div className="chat-hint-bar">

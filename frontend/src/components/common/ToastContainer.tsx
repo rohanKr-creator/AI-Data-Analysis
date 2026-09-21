@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { CheckCircle2, AlertCircle, Info, X } from 'lucide-react';
 import type { ToastNotification } from '../../types/dashboard';
 
@@ -17,38 +17,48 @@ const ToastItem: React.FC<{
   const [isPaused, setIsPaused] = useState(false);
   const timeLeftRef = useRef(durationMs);
   const startTimeRef = useRef(0);
-  const timerRef = useRef<number | null>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const exitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleDismiss = useCallback(() => {
+    setIsExiting(true);
+    setTimeout(() => {
+      onDismiss(toast.id);
+    }, 280);
+  }, [onDismiss, toast.id]);
 
   useEffect(() => {
-    if (isPaused || isExiting) return;
+    if (isPaused) return;
 
     startTimeRef.current = Date.now();
     const remaining = timeLeftRef.current;
 
-    // Start fade out slightly before total dismissal
+    // Start fade-out slightly before final state removal
     const exitLeadTime = 280;
     const timeUntilExit = Math.max(50, remaining - exitLeadTime);
 
-    const exitTimer = window.setTimeout(() => {
+    exitTimerRef.current = setTimeout(() => {
       setIsExiting(true);
     }, timeUntilExit);
 
-    timerRef.current = window.setTimeout(() => {
+    timerRef.current = setTimeout(() => {
       onDismiss(toast.id);
     }, remaining);
 
     return () => {
-      clearTimeout(exitTimer);
+      if (exitTimerRef.current) clearTimeout(exitTimerRef.current);
       if (timerRef.current) clearTimeout(timerRef.current);
-      timeLeftRef.current -= Date.now() - startTimeRef.current;
+      timeLeftRef.current = Math.max(
+        0,
+        timeLeftRef.current - (Date.now() - startTimeRef.current)
+      );
     };
-  }, [isPaused, isExiting, toast.id, onDismiss]);
+  }, [isPaused, onDismiss, toast.id]);
 
   const handleManualDismiss = () => {
-    setIsExiting(true);
-    setTimeout(() => {
-      onDismiss(toast.id);
-    }, 200);
+    if (timerRef.current) clearTimeout(timerRef.current);
+    if (exitTimerRef.current) clearTimeout(exitTimerRef.current);
+    handleDismiss();
   };
 
   const Icon =
@@ -98,7 +108,7 @@ const ToastItem: React.FC<{
 export const ToastContainer: React.FC<ToastContainerProps> = ({
   toasts,
   onDismiss,
-  autoDismissMs = 2500, // ~2.5s auto-dismiss as requested
+  autoDismissMs = 2500, // ~2.5s auto-dismiss
 }) => {
   if (toasts.length === 0) return null;
 

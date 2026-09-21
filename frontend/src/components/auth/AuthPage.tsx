@@ -208,9 +208,6 @@ export const AuthPage: React.FC<AuthPageProps> = ({
         if (data.user) {
           onAuthSuccess(data.user.email || email, 'login');
           setApiSuccess('Welcome back! Redirecting to your workspace...');
-          setTimeout(() => {
-            onBack();
-          }, 800);
         }
       } else if (mode === 'signup') {
         const { data, error } = await supabase.auth.signUp({
@@ -227,9 +224,6 @@ export const AuthPage: React.FC<AuthPageProps> = ({
           // Auto-confirmed user
           onAuthSuccess(data.user?.email || email, 'signup');
           setApiSuccess('Account created! Entering your workspace...');
-          setTimeout(() => {
-            onBack();
-          }, 1000);
         } else if (data.user) {
           // Confirmation email sent
           setApiSuccess(
