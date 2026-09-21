@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Eye,
   EyeOff,
@@ -15,17 +15,27 @@ import {
   Check,
   Shield,
   Activity,
+  Fingerprint,
+  Calendar,
+  Crown,
+  Copy,
+  ArrowRight,
+  LogOut,
+  Terminal,
 } from 'lucide-react';
 import type { User } from '@supabase/supabase-js';
 import { supabase, isSupabaseConfigured } from '../../lib/supabaseClient';
-import { getAuthMe } from '../../services/api';
-import type { UserProfileResponse } from '../../types/api';
+import { getAuthMe, getUserUsage } from '../../services/api';
+import type { UserProfileResponse, UserUsageResponse } from '../../types/api';
+import { StatusPill } from '../common/StatusPill';
+import { InteractiveMiniComputer } from './InteractiveMiniComputer';
 
 export type AuthMode = 'login' | 'signup' | 'forgot-password';
 
 interface AuthPageProps {
   initialMode?: 'login' | 'signup';
   currentUser: User | null;
+  userUsage?: UserUsageResponse | null;
   onAuthSuccess: (email: string, mode: 'login' | 'signup') => void;
   onBack: () => void;
 }
@@ -33,6 +43,7 @@ interface AuthPageProps {
 export const AuthPage: React.FC<AuthPageProps> = ({
   initialMode = 'login',
   currentUser,
+  userUsage,
   onAuthSuccess,
   onBack,
 }) => {
@@ -41,6 +52,53 @@ export const AuthPage: React.FC<AuthPageProps> = ({
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  // Resolved user tier state (PRO or FREE)
+  const [resolvedTier, setResolvedTier] = useState<string>(userUsage?.tier || 'free');
+  const [copiedId, setCopiedId] = useState(false);
+
+  // Developer/Admin account check (used for UI diagnostics visibility)
+  // Note: Client-side filter to declutter regular user experience; backend JWT validation enforces real security
+  const adminEmail = (import.meta.env.VITE_ADMIN_EMAIL || '').trim().toLowerCase();
+  const isAdmin = Boolean(
+    adminEmail && currentUser?.email && currentUser.email.trim().toLowerCase() === adminEmail
+  );
+
+  const userDisplayName =
+    currentUser?.user_metadata?.full_name ||
+    currentUser?.user_metadata?.name ||
+    currentUser?.email?.split('@')[0] ||
+    'User';
+
+  useEffect(() => {
+    if (userUsage?.tier) {
+      setResolvedTier(userUsage.tier);
+    } else if (currentUser) {
+      getUserUsage()
+        .then((data) => {
+          if (data?.tier) setResolvedTier(data.tier);
+        })
+        .catch(() => {
+          // Graceful fallback to free tier if unconfigured/offline
+        });
+    }
+  }, [currentUser, userUsage]);
+
+  const handleCopyId = () => {
+    if (currentUser?.id) {
+      navigator.clipboard.writeText(currentUser.id);
+      setCopiedId(true);
+      setTimeout(() => setCopiedId(false), 2000);
+    }
+  };
+
+  const memberSinceFormatted = currentUser?.created_at
+    ? new Date(currentUser.created_at).toLocaleDateString(undefined, {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+      })
+    : 'Recent Member';
 
   // Reassuring inline validation states
   const [emailTouched, setEmailTouched] = useState(false);
@@ -248,97 +306,240 @@ export const AuthPage: React.FC<AuthPageProps> = ({
 
           <div className="auth-conversion-content">
             {currentUser ? (
-              /* Already Authenticated View */
-              <div className="auth-session-card">
-                <div className="auth-session-header">
-                  <div className="auth-session-avatar">
-                    {(currentUser.email?.[0] || 'U').toUpperCase()}
-                  </div>
-                  <div>
-                    <span className="auth-session-status-pill">Active Session</span>
-                    <h2 className="auth-form-title">You're already signed in</h2>
-                    <p className="auth-form-subtitle">{currentUser.email}</p>
-                  </div>
-                </div>
-
-                <div className="auth-session-details">
-                  <div className="auth-detail-row">
-                    <span className="detail-key">Account ID:</span>
-                    <code className="detail-value">{currentUser.id}</code>
-                  </div>
-                  <div className="auth-detail-row">
-                    <span className="detail-key">Provider:</span>
-                    <span className="detail-value">Supabase Auth (Email)</span>
-                  </div>
-                </div>
-
-                {/* Backend JWT Handshake Test */}
-                <div className="auth-backend-box">
-                  <div className="backend-box-header">
-                    <Shield size={16} className="text-accent" />
-                    <div>
-                      <strong>Backend JWT Verification</strong>
-                      <p>Validate Bearer token against <code>GET /api/v1/auth/me</code></p>
+              /* Already Authenticated Account View with Decorative 3D Terminal Element */
+              <div className="auth-session-container">
+                {/* Interactive Decorative Terminal Showcase */}
+                <div className="auth-decorative-console-banner">
+                  <div className="console-banner-content">
+                    <div className="console-eyebrow">
+                      <span className="console-live-dot" />
+                      <span>Workstation Terminal</span>
                     </div>
+                    <h3 className="console-title">Workspace Connected</h3>
+                    <p className="console-desc">
+                      AI analytics engine online and ready. Move your cursor to tilt the 3D terminal.
+                    </p>
                   </div>
+                  <div className="console-banner-visual">
+                    <InteractiveMiniComputer />
+                  </div>
+                </div>
 
-                  <button
-                    type="button"
-                    className="btn btn-secondary btn-sm btn-with-icon"
-                    onClick={handleTestBackendMe}
-                    disabled={testingBackend}
-                  >
-                    {testingBackend ? (
-                      <>
-                        <Loader2 size={14} className="spinner" />
-                        <span>Verifying Token...</span>
-                      </>
-                    ) : (
-                      <>
-                        <ShieldCheck size={14} />
-                        <span>Verify JWT Token</span>
-                      </>
-                    )}
-                  </button>
-
-                  {backendResult && (
-                    <div className="backend-result-card">
-                      <div className="backend-status-row">
-                        <CheckCircle2 size={14} className="text-success" />
-                        <span>HTTP 200 OK — Verified by Backend</span>
+                {/* Primary Account Profile Card */}
+                <div className="auth-session-card">
+                  <div className="auth-session-header">
+                    <div className="auth-session-avatar-wrap">
+                      <div className="auth-session-avatar">
+                        {(userDisplayName[0] || currentUser.email?.[0] || 'U').toUpperCase()}
                       </div>
-                      <pre className="backend-json-block">
-                        {JSON.stringify(backendResult, null, 2)}
-                      </pre>
+                      <span className="avatar-status-indicator" title="Active Session" />
+                    </div>
+
+                    <div className="auth-session-header-text">
+                      <div className="session-status-row">
+                        <StatusPill label="Active Session" status="healthy" size="sm" pulse={true} />
+                        {resolvedTier === 'pro' ? (
+                          <span className="account-tier-badge tier-badge-pro" title="Active Pro Subscription">
+                            <Crown size={12} className="tier-badge-icon" />
+                            <span>PRO TIER</span>
+                          </span>
+                        ) : (
+                          <span className="account-tier-badge tier-badge-free" title="Free Tier Account">
+                            <span>FREE TIER</span>
+                          </span>
+                        )}
+                        {isAdmin && (
+                          <span className="account-tier-badge tier-badge-admin" title="Developer Diagnostics Mode">
+                            <Terminal size={11} className="tier-badge-icon" />
+                            <span>DEV MODE</span>
+                          </span>
+                        )}
+                      </div>
+                      <h2 className="auth-session-title">
+                        You're signed in
+                      </h2>
+                      <div className="auth-session-user-details">
+                        {userDisplayName && userDisplayName !== currentUser.email && (
+                          <span className="auth-session-name">{userDisplayName}</span>
+                        )}
+                        <span className="auth-session-email">{currentUser.email}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Clean Structured Info Card for All Users */}
+                  <div className="auth-session-info-card">
+                    {/* Account Creation Date */}
+                    <div className="auth-info-row">
+                      <div className="info-row-left">
+                        <div className="info-icon-box">
+                          <Calendar size={15} className="text-indigo" />
+                        </div>
+                        <div className="info-text-group">
+                          <span className="info-label">Member Since</span>
+                          <span className="info-main-value">{memberSinceFormatted}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Plan Status */}
+                    <div className="auth-info-row">
+                      <div className="info-row-left">
+                        <div className="info-icon-box">
+                          {resolvedTier === 'pro' ? (
+                            <Crown size={15} className="text-amber" />
+                          ) : (
+                            <Zap size={15} className="text-accent" />
+                          )}
+                        </div>
+                        <div className="info-text-group">
+                          <span className="info-label">Current Plan</span>
+                          <span className="info-main-value">
+                            {resolvedTier === 'pro'
+                              ? 'Pro Plan — Unlimited Datasets & AI Questions'
+                              : 'Free Plan — 3 Datasets & 10 AI Questions / Day'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Developer Diagnostics Panel — Only rendered for admin email */}
+                  {isAdmin && (
+                    <div className="auth-developer-panel">
+                      <div className="developer-panel-header">
+                        <div className="dev-panel-title-wrap">
+                          <Terminal size={15} className="text-accent" />
+                          <div>
+                            <span className="dev-panel-title">Developer Diagnostics</span>
+                            <span className="dev-panel-subtitle">Visible only to admin account</span>
+                          </div>
+                        </div>
+                        <span className="dev-mode-pill">Admin Only</span>
+                      </div>
+
+                      <div className="auth-session-info-card dev-info-subcard">
+                        {/* Account ID */}
+                        <div className="auth-info-row">
+                          <div className="info-row-left">
+                            <div className="info-icon-box">
+                              <Fingerprint size={15} />
+                            </div>
+                            <div className="info-text-group">
+                              <span className="info-label">Account ID</span>
+                              <code className="info-code-value" title={currentUser.id}>
+                                {currentUser.id}
+                              </code>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            className={`btn-copy-id ${copiedId ? 'copied' : ''}`}
+                            onClick={handleCopyId}
+                            title={copiedId ? 'Copied to clipboard' : 'Copy Account ID'}
+                            aria-label="Copy Account ID"
+                          >
+                            {copiedId ? (
+                              <>
+                                <Check size={13} className="text-success" />
+                                <span className="copy-text text-success">Copied</span>
+                              </>
+                            ) : (
+                              <>
+                                <Copy size={13} />
+                                <span className="copy-text">Copy</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+
+                        {/* Auth Provider */}
+                        <div className="auth-info-row">
+                          <div className="info-row-left">
+                            <div className="info-icon-box">
+                              <ShieldCheck size={15} className="text-emerald" />
+                            </div>
+                            <div className="info-text-group">
+                              <span className="info-label">Authentication Provider</span>
+                              <span className="info-main-value">Supabase Auth (Encrypted JWT)</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Backend JWT Handshake Test */}
+                      <div className="auth-backend-box">
+                        <div className="backend-box-header">
+                          <Shield size={16} className="text-accent" />
+                          <div>
+                            <strong>Backend JWT Verification</strong>
+                            <p>Validate Bearer token against <code>GET /api/v1/auth/me</code></p>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-sm btn-with-icon"
+                          onClick={handleTestBackendMe}
+                          disabled={testingBackend}
+                        >
+                          {testingBackend ? (
+                            <>
+                              <Loader2 size={14} className="spinner" />
+                              <span>Verifying Token...</span>
+                            </>
+                          ) : (
+                            <>
+                              <ShieldCheck size={14} />
+                              <span>Verify JWT Token</span>
+                            </>
+                          )}
+                        </button>
+
+                        {backendResult && (
+                          <div className="backend-result-card">
+                            <div className="backend-status-row">
+                              <CheckCircle2 size={14} className="text-success" />
+                              <span>HTTP 200 OK — Verified by Backend</span>
+                            </div>
+                            <pre className="backend-json-block">
+                              {JSON.stringify(backendResult, null, 2)}
+                            </pre>
+                          </div>
+                        )}
+
+                        {backendError && (
+                          <div className="auth-inline-alert auth-inline-alert-error">
+                            <AlertCircle size={15} />
+                            <span>{backendError}</span>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   )}
 
-                  {backendError && (
-                    <div className="auth-inline-alert auth-inline-alert-error">
-                      <AlertCircle size={15} />
-                      <span>{backendError}</span>
-                    </div>
-                  )}
-                </div>
-
-                <div className="auth-session-actions">
-                  <button
-                    type="button"
-                    className="btn btn-primary btn-lg full-width"
-                    onClick={onBack}
-                  >
-                    Continue to Data Workspace
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-secondary full-width"
-                    onClick={async () => {
-                      await supabase.auth.signOut();
-                      resetFeedback();
-                    }}
-                  >
-                    Sign Out of Account
-                  </button>
+                  {/* Action Buttons with rich hover states and smooth transitions */}
+                  <div className="auth-session-actions">
+                    <button
+                      type="button"
+                      className="btn-session-continue"
+                      onClick={onBack}
+                    >
+                      <span>Continue to Workspace</span>
+                      <ArrowRight size={17} className="btn-arrow-icon" />
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-session-signout"
+                      onClick={async () => {
+                        await supabase.auth.signOut();
+                        resetFeedback();
+                      }}
+                    >
+                      <LogOut size={16} className="btn-logout-icon" />
+                      <span>Sign Out</span>
+                    </button>
+                  </div>
                 </div>
               </div>
             ) : (

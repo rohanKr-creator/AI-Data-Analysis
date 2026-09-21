@@ -298,6 +298,7 @@ EMP-115,Robert Diaz,Engineering,118000,305000,4.7,2020`;
         <AuthPage
           initialMode={authMode}
           currentUser={currentUser}
+          userUsage={userUsage}
           onBack={handleBackToWorkspace}
           onAuthSuccess={handleAuthSuccess}
         />
