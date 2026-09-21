@@ -48,6 +48,11 @@ class Settings(BaseSettings):
     SUPABASE_BUCKET_NAME: str = "datasets"
     SUPABASE_JWT_SECRET: str = ""
 
+    # Stripe Payment & Webhook Settings
+    STRIPE_SECRET_KEY: str = ""
+    STRIPE_WEBHOOK_SECRET: str = ""
+    FRONTEND_URL: str = "http://localhost:5173"
+
     @property
     def supabase_jwks_url(self) -> str:
         """Returns the public JWKS endpoint for Supabase Auth JWT verification."""

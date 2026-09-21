@@ -1,3 +1,4 @@
+from typing import Optional
 import uuid
 from datetime import datetime
 from sqlalchemy import DateTime, Index, String, func
@@ -23,6 +24,18 @@ class UserProfile(Base):
         default="free",
         server_default="free",
         doc="Subscription tier: 'free' or 'pro'",
+    )
+    stripe_customer_id: Mapped[Optional[str]] = mapped_column(
+        String(255),
+        nullable=True,
+        index=True,
+        doc="Stripe Customer ID linked to this user",
+    )
+    stripe_subscription_id: Mapped[Optional[str]] = mapped_column(
+        String(255),
+        nullable=True,
+        index=True,
+        doc="Stripe Subscription ID for recurring billing",
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

@@ -185,7 +185,7 @@ def read_file_to_dataframe(
                 df = df.drop(columns=unnamed_empty_cols)
 
             # Edge case 3: Normalize whitespace-only or empty strings to NaN in string/object columns
-            for col in df.select_dtypes(include=["object", "string", "str"]):
+            for col in df.select_dtypes(include=["object", "string"]):
                 df[col] = df[col].apply(
                     lambda x: np.nan if isinstance(x, str) and x.strip() == "" else x
                 )

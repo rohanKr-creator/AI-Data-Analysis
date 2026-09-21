@@ -67,8 +67,27 @@ export interface UserProfileResponse {
   email: string | null;
   role?: string | null;
   tier?: string;
+  stripe_customer_id?: string | null;
+  stripe_subscription_id?: string | null;
   app_metadata?: Record<string, unknown>;
   user_metadata?: Record<string, unknown>;
+}
+
+export interface CheckoutResponse {
+  checkout_url: string;
+  session_id: string;
+}
+
+export interface PortalResponse {
+  portal_url: string;
+}
+
+export interface BillingStatusResponse {
+  user_id: string;
+  tier: string;
+  is_pro: boolean;
+  stripe_customer_id: string | null;
+  stripe_subscription_id: string | null;
 }
 
 export interface UsageMetric {

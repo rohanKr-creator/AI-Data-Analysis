@@ -17,6 +17,8 @@ class UserProfileResponse(BaseModel):
     email: Optional[str] = Field(default=None, description="User email address")
     role: Optional[str] = Field(default=None, description="Authentication role")
     tier: str = Field(default="free", description="User subscription tier (free or pro)")
+    stripe_customer_id: Optional[str] = Field(default=None, description="Stripe customer ID")
+    stripe_subscription_id: Optional[str] = Field(default=None, description="Stripe subscription ID")
     app_metadata: Dict[str, Any] = Field(default_factory=dict, description="Application metadata")
     user_metadata: Dict[str, Any] = Field(default_factory=dict, description="User metadata")
 
@@ -56,6 +58,8 @@ def get_current_user_profile(
         email=user.email,
         role=user.role,
         tier=profile.tier,
+        stripe_customer_id=profile.stripe_customer_id,
+        stripe_subscription_id=profile.stripe_subscription_id,
         app_metadata=user.app_metadata,
         user_metadata=user.user_metadata,
     )

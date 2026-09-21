@@ -1,6 +1,18 @@
-import React from 'react';
-import { X, Sparkles, Check, Zap, ArrowRight, ShieldCheck } from 'lucide-react';
+import React, { useState } from 'react';
+import {
+  X,
+  Sparkles,
+  Check,
+  Zap,
+  ArrowRight,
+  ShieldCheck,
+  Loader2,
+  ExternalLink,
+  AlertCircle,
+  CreditCard,
+} from 'lucide-react';
 import type { UserUsageResponse } from '../../types/api';
+import { createCheckoutSession, createCustomerPortalSession } from '../../services/api';
 
 interface UpgradeModalProps {
   isOpen: boolean;
@@ -15,11 +27,56 @@ export const UpgradeModal: React.FC<UpgradeModalProps> = ({
   userUsage,
   onNotify,
 }) => {
+  const [isProcessing, setIsProcessing] = useState<boolean>(false);
+  const [isPortalProcessing, setIsPortalProcessing] = useState<boolean>(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
   if (!isOpen) return null;
 
   const askLimit = userUsage?.usage.ask.limit ?? 20;
   const uploadLimit = userUsage?.usage.upload.limit ?? 5;
   const isPro = userUsage?.tier === 'pro';
+
+  const handleUpgradeClick = async () => {
+    setIsProcessing(true);
+    setErrorMessage(null);
+
+    try {
+      const response = await createCheckoutSession();
+      if (response.checkout_url) {
+        onNotify?.('info', 'Redirecting to Stripe', 'Taking you to secure Stripe Checkout...');
+        // Redirect browser to hosted Stripe Checkout session
+        window.location.href = response.checkout_url;
+      } else {
+        throw new Error('Checkout URL not returned by server.');
+      }
+    } catch (err) {
+      const msg = (err as Error).message || 'Failed to initiate checkout session.';
+      setErrorMessage(msg);
+      onNotify?.('error', 'Checkout Error', msg);
+      setIsProcessing(false);
+    }
+  };
+
+  const handleManageBillingClick = async () => {
+    setIsPortalProcessing(true);
+    setErrorMessage(null);
+
+    try {
+      const response = await createCustomerPortalSession();
+      if (response.portal_url) {
+        onNotify?.('info', 'Opening Customer Portal', 'Taking you to Stripe Customer Billing Portal...');
+        window.location.href = response.portal_url;
+      } else {
+        throw new Error('Portal URL not returned by server.');
+      }
+    } catch (err) {
+      const msg = (err as Error).message || 'Failed to open customer billing portal.';
+      setErrorMessage(msg);
+      onNotify?.('error', 'Billing Portal Error', msg);
+      setIsPortalProcessing(false);
+    }
+  };
 
   return (
     <div className="modal-backdrop" onClick={onClose} role="dialog" aria-modal="true">
@@ -41,6 +98,7 @@ export const UpgradeModal: React.FC<UpgradeModalProps> = ({
             className="modal-close-btn"
             onClick={onClose}
             aria-label="Close upgrade modal"
+            disabled={isProcessing || isPortalProcessing}
           >
             <X size={18} />
           </button>
@@ -48,6 +106,13 @@ export const UpgradeModal: React.FC<UpgradeModalProps> = ({
 
         {/* Modal Body */}
         <div className="modal-body upgrade-modal-body">
+          {errorMessage && (
+            <div className="alert alert-error upgrade-alert" role="alert" style={{ marginBottom: '1rem' }}>
+              <AlertCircle size={16} />
+              <span>{errorMessage}</span>
+            </div>
+          )}
+
           {/* Plan Comparison Grid */}
           <div className="upgrade-grid">
             {/* Free Plan Card */}
@@ -130,24 +195,49 @@ export const UpgradeModal: React.FC<UpgradeModalProps> = ({
 
               <div className="pricing-footer">
                 {isPro ? (
-                  <div className="plan-current-tag pro-current">
-                    <ShieldCheck size={16} />
-                    <span>Active Pro Member</span>
+                  <div className="pro-actions-container">
+                    <div className="plan-current-tag pro-current" style={{ marginBottom: '0.5rem' }}>
+                      <ShieldCheck size={16} />
+                      <span>Active Pro Member</span>
+                    </div>
+                    <button
+                      className="btn btn-secondary btn-block btn-sm"
+                      onClick={handleManageBillingClick}
+                      disabled={isPortalProcessing}
+                      title="Manage payment method, subscriptions, or cancel"
+                    >
+                      {isPortalProcessing ? (
+                        <>
+                          <Loader2 size={14} className="spin-icon" />
+                          <span>Loading Portal...</span>
+                        </>
+                      ) : (
+                        <>
+                          <CreditCard size={14} />
+                          <span>Manage Subscription</span>
+                          <ExternalLink size={12} />
+                        </>
+                      )}
+                    </button>
                   </div>
                 ) : (
                   <button
                     className="btn btn-primary btn-block btn-upgrade-cta"
-                    onClick={() => {
-                      onNotify?.(
-                        'info',
-                        'Settings updated',
-                        'Upgrade request registered. Pro features will activate automatically upon payment confirmation.'
-                      );
-                      onClose();
-                    }}
+                    onClick={handleUpgradeClick}
+                    disabled={isProcessing}
+                    id="upgrade-to-pro-btn"
                   >
-                    <span>Upgrade to Pro</span>
-                    <ArrowRight size={16} />
+                    {isProcessing ? (
+                      <>
+                        <Loader2 size={16} className="spin-icon" />
+                        <span>Connecting to Stripe...</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>Upgrade to Pro</span>
+                        <ArrowRight size={16} />
+                      </>
+                    )}
                   </button>
                 )}
               </div>
@@ -155,8 +245,9 @@ export const UpgradeModal: React.FC<UpgradeModalProps> = ({
           </div>
 
           <div className="upgrade-modal-note">
-            <p>
-              💡 <em>Stage 4 notice:</em> Automated billing and Stripe checkout will be configured in Stage 5. To manually activate Pro tier during development, update your row in <code>user_profiles</code>.
+            <p style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+              <ShieldCheck size={15} style={{ color: '#10b981' }} />
+              <span>Payments secured by <strong>Stripe</strong>. 256-bit encryption. Cancel anytime with one click.</span>
             </p>
           </div>
         </div>

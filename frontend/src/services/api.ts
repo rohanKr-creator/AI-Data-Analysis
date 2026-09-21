@@ -2,9 +2,12 @@ import type {
   AnalyticsRequest,
   AnalyticsResponse,
   AskQuestionResponse,
+  BillingStatusResponse,
+  CheckoutResponse,
   DatasetListItem,
   DatasetProfileResponse,
   DatasetUploadResponse,
+  PortalResponse,
   UserProfileResponse,
   UserUsageResponse,
 } from '../types/api';
@@ -246,3 +249,90 @@ export async function getUserUsage(): Promise<UserUsageResponse> {
 
   return response.json();
 }
+
+export async function createCheckoutSession(
+  successUrl?: string,
+  cancelUrl?: string
+): Promise<CheckoutResponse> {
+  const authHeaders = await getAuthHeaders();
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}/billing/checkout`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...authHeaders,
+      },
+      body: JSON.stringify({
+        success_url: successUrl,
+        cancel_url: cancelUrl,
+      }),
+    });
+  } catch (err) {
+    throw new Error(
+      `Unable to connect to billing server at ${API_BASE_URL}. Ensure backend is running. (${(err as Error).message})`
+    );
+  }
+
+  if (!response.ok) {
+    const message = await parseErrorMessage(response);
+    throw new Error(message);
+  }
+
+  return response.json();
+}
+
+export async function createCustomerPortalSession(
+  returnUrl?: string
+): Promise<PortalResponse> {
+  const authHeaders = await getAuthHeaders();
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}/billing/portal`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...authHeaders,
+      },
+      body: JSON.stringify({
+        return_url: returnUrl,
+      }),
+    });
+  } catch (err) {
+    throw new Error(
+      `Unable to connect to billing server at ${API_BASE_URL}. (${(err as Error).message})`
+    );
+  }
+
+  if (!response.ok) {
+    const message = await parseErrorMessage(response);
+    throw new Error(message);
+  }
+
+  return response.json();
+}
+
+export async function getBillingStatus(): Promise<BillingStatusResponse> {
+  const authHeaders = await getAuthHeaders();
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}/billing/status`, {
+      method: 'GET',
+      headers: {
+        ...authHeaders,
+      },
+    });
+  } catch (err) {
+    throw new Error(
+      `Unable to connect to billing server at ${API_BASE_URL}. (${(err as Error).message})`
+    );
+  }
+
+  if (!response.ok) {
+    const message = await parseErrorMessage(response);
+    throw new Error(message);
+  }
+
+  return response.json();
+}
+

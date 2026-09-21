@@ -128,6 +128,35 @@ export function App() {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
+  // Handle return from Stripe Checkout (success or cancel)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const path = window.location.pathname.toLowerCase();
+
+    if (path.includes('/billing/success') || params.has('session_id')) {
+      const cleanPath = window.location.pathname.replace(/\/billing\/success\/?/i, '/') || '/';
+      window.history.replaceState({}, document.title, cleanPath);
+      setTimeout(() => {
+        addToast(
+          'success',
+          'Welcome to Pro! 🎉',
+          'Your Pro subscription is now active! Enjoy unlimited uploads and Gemini AI questions.'
+        );
+        refreshUsage();
+      }, 0);
+    } else if (path.includes('/billing/cancelled')) {
+      const cleanPath = window.location.pathname.replace(/\/billing\/cancelled\/?/i, '/') || '/';
+      window.history.replaceState({}, document.title, cleanPath);
+      setTimeout(() => {
+        addToast(
+          'info',
+          'Upgrade Cancelled',
+          'Stripe checkout was cancelled. You can upgrade to Pro at any time.'
+        );
+      }, 0);
+    }
+  }, [addToast, refreshUsage]);
+
   const handleAuthSuccess = useCallback(
     (email: string, mode: 'login' | 'signup') => {
       window.history.pushState({}, '', '/');
