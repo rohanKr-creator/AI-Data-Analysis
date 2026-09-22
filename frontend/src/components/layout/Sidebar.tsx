@@ -51,6 +51,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [isCollapsed, setIsCollapsed] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>('');
 
+  // On mobile drawer overlay, always render expanded view for comfortable touch navigation
+  const effectivelyCollapsed = isCollapsed && !mobileOpen;
+
   const navItems: {
     id: DashboardTab;
     label: string;
@@ -115,7 +118,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
     'User';
 
   const userEmail = currentUser?.email || 'user@example.com';
-  const userInitials = (userDisplayName?.[0] || userEmail?.[0] || 'U').toUpperCase();
+  const nameParts = (currentUser?.user_metadata?.full_name || userDisplayName).trim().split(/\s+/);
+  const userInitials = (
+    nameParts.length > 1
+      ? `${nameParts[0][0]}${nameParts[nameParts.length - 1][0]}`
+      : nameParts[0]?.[0] || userEmail[0] || 'U'
+  ).toUpperCase();
 
   const isPro = userUsage?.tier === 'pro';
 
@@ -125,29 +133,29 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div className="sidebar-backdrop" onClick={onCloseMobile} aria-hidden="true" />
       )}
       <aside
-        className={`saas-sidebar ${isCollapsed ? 'collapsed' : ''} ${
+        className={`saas-sidebar ${effectivelyCollapsed ? 'collapsed' : ''} ${
           mobileOpen ? 'mobile-open' : ''
         }`}
       >
         {/* Top Header Row with Collapse/Expand Toggle */}
         <div className="sidebar-top-section">
           <div className="sidebar-header-row">
-            {!isCollapsed && (
+            {!effectivelyCollapsed && (
               <div className="sidebar-section-label">ANALYTICS SUITE</div>
             )}
             <button
               type="button"
               className="sidebar-collapse-btn"
               onClick={() => setIsCollapsed((prev) => !prev)}
-              title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-              aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+              title={effectivelyCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+              aria-label={effectivelyCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
             >
-              {isCollapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
+              {effectivelyCollapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
             </button>
           </div>
 
           {/* Search/Filter Bar */}
-          {!isCollapsed ? (
+          {!effectivelyCollapsed ? (
             <div className="sidebar-search-box">
               <Search size={14} className="sidebar-search-icon" />
               <input
@@ -186,7 +194,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div className="sidebar-nav-container">
           <div className="sidebar-group-header">
             <div className="sidebar-group-divider" />
-            {!isCollapsed && <span className="sidebar-group-title">WORKSPACE</span>}
+            {!effectivelyCollapsed && <span className="sidebar-group-title">WORKSPACE</span>}
           </div>
 
           <nav className="sidebar-nav">
@@ -201,15 +209,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     key={item.id}
                     className={`sidebar-link ${isActive ? 'active' : ''}`}
                     onClick={() => handleSelect(item.id)}
-                    title={isCollapsed ? item.label : undefined}
+                    title={effectivelyCollapsed ? item.label : undefined}
                   >
                     <div className="sidebar-link-inner">
                       <Icon size={18} className="sidebar-icon" />
-                      {!isCollapsed && (
+                      {!effectivelyCollapsed && (
                         <span className="sidebar-label">{item.label}</span>
                       )}
                     </div>
-                    {!isCollapsed && item.badge && (
+                    {!effectivelyCollapsed && item.badge && (
                       <span
                         className={`sidebar-badge ${
                           item.badgeColor ? `badge-${item.badgeColor}` : ''
@@ -228,7 +236,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* Bottom Section: Pro Plan Card + Upload + Profile Footer */}
         <div className="sidebar-bottom-section">
           {/* Boost with AI / Pro Plan Gradient Card */}
-          {userUsage && !isCollapsed && (
+          {userUsage && !effectivelyCollapsed && (
             <div className={`sidebar-pro-card ${isPro ? 'card-pro' : 'card-free'}`}>
               <div className="pro-card-header">
                 <div className="pro-card-badge">
@@ -246,7 +254,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
               <div className="pro-card-content">
                 <h4 className="pro-card-title">
-                  {isPro ? 'Pro Active' : 'Upgrade to Pro'}
+                  {isPro ? 'Pro Active' : 'Boost with AI'}
                 </h4>
                 <p className="pro-card-desc">
                   {isPro
@@ -302,7 +310,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           )}
 
           {/* Mini Pro indicator when collapsed */}
-          {userUsage && isCollapsed && (
+          {userUsage && effectivelyCollapsed && (
             <div
               className="sidebar-collapsed-pro-indicator"
               onClick={!isPro ? onOpenUpgrade : undefined}
@@ -322,10 +330,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <button
             className="sidebar-upload-btn"
             onClick={onNewUpload}
-            title={isCollapsed ? 'Upload New Dataset' : undefined}
+            title={effectivelyCollapsed ? 'Upload New Dataset' : undefined}
           >
             <UploadCloud size={16} className="sidebar-upload-icon" />
-            {!isCollapsed && <span>Upload New Dataset</span>}
+            {!effectivelyCollapsed && <span>Upload New Dataset</span>}
           </button>
 
           {/* User Profile Footer Row */}
@@ -339,7 +347,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <div className="user-avatar-circle">
               {userInitials}
             </div>
-            {!isCollapsed && (
+            {!effectivelyCollapsed && (
               <>
                 <div className="user-profile-meta">
                   <span className="user-display-name">{userDisplayName}</span>
@@ -352,7 +360,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             )}
           </div>
 
-          {!isCollapsed && (
+          {!effectivelyCollapsed && (
             <div className="sidebar-meta">
               <FileCode2 size={12} />
               <span>FastAPI • Pandas • Recharts</span>
